@@ -36,7 +36,8 @@ import org.waveprotocol.box.server.waveserver.PerUserWaveViewBus;
 import org.waveprotocol.box.server.waveserver.PerUserWaveViewHandler;
 import org.waveprotocol.box.server.waveserver.PerUserWaveViewProvider;
 import org.waveprotocol.box.server.waveserver.SearchProvider;
-import org.waveprotocol.box.server.waveserver.SimpleSearchProviderImpl;
+import org.waveprotocol.box.server.waveserver.SolrPerUserWaveViewHandlerImpl;
+import org.waveprotocol.box.server.waveserver.SolrSearchProviderImpl;
 import org.waveprotocol.box.server.waveserver.WaveIndexer;
 
 /**
@@ -56,7 +57,8 @@ public class SearchModule extends AbstractModule {
 
   @Override
   public void configure() {
-    bind(SearchProvider.class).to(SimpleSearchProviderImpl.class).in(Singleton.class);
+    // bind(SearchProvider.class).to(SimpleSearchProviderImpl.class).in(Singleton.class);
+    bind(SearchProvider.class).to(SolrSearchProviderImpl.class).in(Singleton.class);
     if ("lucene".equals(searchType)) {
       bind(PerUserWaveViewProvider.class).to(LucenePerUserWaveViewHandlerImpl.class).in(
           Singleton.class);
@@ -70,6 +72,14 @@ public class SearchModule extends AbstractModule {
       } else {
         bind(WaveIndexer.class).to(NoOpWaveIndexerImpl.class);
       }
+    } else if ("solr".equals(searchType)) {
+      bind(PerUserWaveViewProvider.class).to(SolrPerUserWaveViewHandlerImpl.class).in(
+          Singleton.class);
+      bind(PerUserWaveViewBus.Listener.class).to(SolrPerUserWaveViewHandlerImpl.class).in(
+          Singleton.class);
+      bind(PerUserWaveViewHandler.class).to(SolrPerUserWaveViewHandlerImpl.class).in(
+          Singleton.class);
+      bind(WaveIndexer.class).to(LuceneWaveIndexerImpl.class).in(Singleton.class);
     } else if ("memory".equals(searchType)) {
       bind(PerUserWaveViewProvider.class).to(MemoryPerUserWaveViewHandlerImpl.class).in(
           Singleton.class);
