@@ -19,15 +19,10 @@
 
 package org.waveprotocol.box.server.waveserver;
 
-import static org.waveprotocol.box.server.waveserver.IndexFieldType.WAVEID;
-import static org.waveprotocol.box.server.waveserver.IndexFieldType.WAVELETID;
-
-import com.google.common.base.Function;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.inject.Inject;
@@ -35,33 +30,23 @@ import com.google.inject.name.Named;
 import com.google.wave.api.SearchResult;
 
 import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.HttpMethod;
 import org.apache.commons.httpclient.URI;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.http.HttpStatus;
 import org.waveprotocol.box.server.CoreSettings;
-import org.waveprotocol.box.server.util.WaveletDataUtil;
-import org.waveprotocol.box.server.waveserver.QueryHelper.InvalidQueryException;
-import org.waveprotocol.wave.model.id.IdUtil;
 import org.waveprotocol.wave.model.id.WaveId;
 import org.waveprotocol.wave.model.id.WaveletId;
 import org.waveprotocol.wave.model.id.WaveletName;
-import org.waveprotocol.wave.model.wave.InvalidParticipantAddress;
 import org.waveprotocol.wave.model.wave.ParticipantId;
 import org.waveprotocol.wave.model.wave.ParticipantIdUtil;
-import org.waveprotocol.wave.model.wave.data.ReadableWaveletData;
 import org.waveprotocol.wave.model.wave.data.WaveViewData;
 import org.waveprotocol.wave.model.wave.data.impl.WaveViewDataImpl;
 import org.waveprotocol.wave.util.logging.Log;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.URLEncoder;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Search provider that reads user specific info from user data wavelet.
@@ -75,16 +60,22 @@ public class SolrSearchProviderImpl implements SearchProvider {
   private final WaveDigester digester;
   private final WaveMap waveMap;
 
+  /*
+   * TODO find out what to do with it
+   */
   private final ParticipantId sharedDomainParticipantId;
 
-  private final PerUserWaveViewProvider waveViewProvider;
+  /*
+   * XXX remove this since
+   */
+  // private final PerUserWaveViewProvider waveViewProvider;
 
   @Inject
   public SolrSearchProviderImpl(@Named(CoreSettings.WAVE_SERVER_DOMAIN) final String waveDomain,
-      WaveDigester digester, final WaveMap waveMap, PerUserWaveViewProvider userWaveViewProvider) {
+      WaveDigester digester, final WaveMap waveMap) {
     this.digester = digester;
     this.waveMap = waveMap;
-    this.waveViewProvider = userWaveViewProvider;
+    // this.waveViewProvider = userWaveViewProvider;
     sharedDomainParticipantId = ParticipantIdUtil.makeUnsafeSharedDomainParticipantId(waveDomain);
   }
 
@@ -95,62 +86,90 @@ public class SolrSearchProviderImpl implements SearchProvider {
 
     Multimap<WaveId, WaveletId> currentUserWavesView = HashMultimap.create();
 
-    /*
-     * http://localhost:8983/solr/select?wt=json&q=*:*
-     */
-    String q = "waveId_s:[* TO *]" //
-        + " AND waveletId_s:[* TO *]" //
-        + " AND docName_s:[* TO *]" //
-        + " AND lmt_l:[* TO *]" //
-        + " AND with_txt:[* TO *]" //
-        + " AND text_t:[* TO *]" //
-        + " AND in_ss:[* TO *]";
+    if (numResults > 0) {
+      /*
+       * http://localhost:8983/solr/select?wt=json&q=*:*
+       */
+      String q = "waveId_s:[* TO *]" //
+          + " AND waveletId_s:[* TO *]" //
+          + " AND docName_s:[* TO *]" //
+          + " AND lmt_l:[* TO *]" //
+          + " AND with_txt:[* TO *]" //
+          + " AND text_t:[* TO *]" //
+          + " AND in_ss:[* TO *]";
 
-    String fq = "{!lucene q.op=AND df=text_t}with_txt:" + user.getAddress();
-    if (query.length() > 0) {
-      fq +=
-          " AND (" + query.replaceAll("\\bin:", "in_ss:").replaceAll("\\bwith:", "with_txt:") + ")";
-    }
+      /*
+       * XXX will it be better to replace lucene with edismax?
+       */
+      String fq = "{!lucene q.op=AND df=text_t}with_txt:" + user.getAddress();
+      if (query.length() > 0) {
+        fq +=
+            " AND (" + query.replaceAll("\\bin:", "in_ss:").replaceAll("\\bwith:", "with_txt:")
+                + ")";
+      }
 
-    GetMethod getMethod = new GetMethod();
-    try {
-      // getMethod.setURI(new URI("http://localhost:8983/solr/select?wt=json&q="
-      // + URLEncoder.encode(q, "UTF-8")));
-      getMethod.setURI(new URI("http://localhost:8983/solr/select?wt=json&q=" + q + "&fq=" + fq,
-          false));
+      int start = startAt;
+      int rows = Math.max(numResults, 10);
 
-      HttpClient httpClient = new HttpClient();
-      int statusCode = httpClient.executeMethod(getMethod);
-      if (statusCode != HttpStatus.SC_OK) {
+      GetMethod getMethod = new GetMethod();
+      try {
+        // getMethod.setURI(new
+        // URI("http://localhost:8983/solr/select?wt=json&q="
+        // + URLEncoder.encode(q, "UTF-8")));
+        while (true) {
+          getMethod.setURI(new URI("http://localhost:8983/solr/select?wt=json" + "&start=" + start
+              + "&rows=" + rows + "&q=" + q + "&fq=" + fq, false));
+
+          HttpClient httpClient = new HttpClient();
+          int statusCode = httpClient.executeMethod(getMethod);
+          if (statusCode != HttpStatus.SC_OK) {
+            LOG.warning("Failed to execute query: " + query);
+            return digester.generateSearchResult(user, query, null);
+          }
+
+          JsonObject json =
+              new JsonParser().parse(new InputStreamReader(getMethod.getResponseBodyAsStream()))
+                  .getAsJsonObject();
+          JsonObject responseJson = json.getAsJsonObject("response");
+          JsonArray docsJson = responseJson.getAsJsonArray("docs");
+          if (docsJson.size() == 0) {
+            break;
+          }
+
+          for (int i = 0; i < docsJson.size(); i++) {
+            JsonObject docJson = docsJson.get(i).getAsJsonObject();
+            WaveId waveId =
+                WaveId.deserialise(docJson.getAsJsonPrimitive("waveId_s").getAsString());
+            WaveletId waveletId =
+                WaveletId.deserialise(docJson.getAsJsonPrimitive("waveletId_s").getAsString());
+            currentUserWavesView.put(waveId, waveletId);
+            if (currentUserWavesView.size() >= numResults) {
+              break;
+            }
+          }
+
+          if (currentUserWavesView.size() >= numResults) {
+            break;
+          }
+
+          if (docsJson.size() < rows) {
+            break;
+          }
+
+          start += rows;
+        }
+
+      } catch (IOException e) {
         LOG.warning("Failed to execute query: " + query);
         return digester.generateSearchResult(user, query, null);
+      } finally {
+        getMethod.releaseConnection();
       }
-
-      JsonObject json =
-          new JsonParser().parse(new InputStreamReader(getMethod.getResponseBodyAsStream()))
-              .getAsJsonObject();
-      JsonObject responseJson = json.getAsJsonObject("response");
-      JsonArray docsJson = responseJson.getAsJsonArray("docs");
-      for (int i = 0; i < docsJson.size(); i++) {
-        JsonObject docJson = docsJson.get(i).getAsJsonObject();
-        WaveId waveId = WaveId.deserialise(docJson.getAsJsonPrimitive("waveId_s").getAsString());
-        WaveletId waveletId =
-            WaveletId.deserialise(docJson.getAsJsonPrimitive("waveletId_s").getAsString());
-        currentUserWavesView.put(waveId, waveletId);
-      }
-
-    } catch (IOException e) {
-      LOG.warning("Failed to execute query: " + query);
-      return digester.generateSearchResult(user, query, null);
-    } finally {
-      getMethod.releaseConnection();
     }
 
-
     Map<WaveId, WaveViewData> results = filterWavesViewBySearchCriteria(currentUserWavesView);
-
     if (LOG.isFineLoggable()) {
-      for (Map.Entry e : results.entrySet()) {
+      for (Map.Entry<WaveId, WaveViewData> e : results.entrySet()) {
         LOG.fine("filtered results contains: " + e.getKey());
       }
     }
@@ -160,7 +179,6 @@ public class SolrSearchProviderImpl implements SearchProvider {
         + user);
     return digester.generateSearchResult(user, query, searchResult);
   }
-
 
   private Map<WaveId, WaveViewData> filterWavesViewBySearchCriteria(
       Multimap<WaveId, WaveletId> currentUserWavesView) {
