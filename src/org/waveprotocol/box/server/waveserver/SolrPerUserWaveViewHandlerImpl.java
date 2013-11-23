@@ -220,6 +220,10 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
 
     Preconditions.checkNotNull(wavelet);
 
+    /*
+     * update solr index
+     */
+
     PostMethod postMethod = new PostMethod("http://localhost:8983/solr/update/json?commit=true");
     // postMethod.setRequestHeader("Content-Type", "application/json");
     try {
@@ -273,11 +277,8 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
         throw new IndexException(waveId);
       }
 
-      LOG.fine(postMethod.getResponseBodyAsString());
+      // LOG.fine(postMethod.getResponseBodyAsString());
 
-      /*
-       * FIXME update solr index
-       */
     } catch (IOException e) {
       throw new IndexException(String.valueOf(wavelet.getWaveletId()), e);
     } finally {
