@@ -106,12 +106,11 @@ public class SolrSearchProviderImpl implements SearchProvider {
         + " AND text_t:[* TO *]" //
         + " AND in_ss:[* TO *]";
 
-    if (query.length() == 0) {
-      query = "*:*";
+    String fq = "{!lucene q.op=AND df=text_t}with_txt:" + user.getAddress();
+    if (query.length() > 0) {
+      fq +=
+          " AND (" + query.replaceAll("\\bin:", "in_ss:").replaceAll("\\bwith:", "with_txt:") + ")";
     }
-    String fq =
-        "{!lucene q.op=AND df=text_t}"
-            + query.replaceAll("\\bin:", "in_ss:").replaceAll("\\bwith:", "with_txt:");
 
     GetMethod getMethod = new GetMethod();
     try {
