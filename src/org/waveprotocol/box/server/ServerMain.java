@@ -48,15 +48,18 @@ import org.waveprotocol.box.server.robots.active.ActiveApiServlet;
 import org.waveprotocol.box.server.robots.agent.passwd.PasswordAdminRobot;
 import org.waveprotocol.box.server.robots.agent.passwd.PasswordRobot;
 import org.waveprotocol.box.server.robots.agent.registration.RegistrationRobot;
+import org.waveprotocol.box.server.robots.agent.search.SolrRobot;
 import org.waveprotocol.box.server.robots.agent.welcome.WelcomeRobot;
 import org.waveprotocol.box.server.robots.dataapi.DataApiOAuthServlet;
 import org.waveprotocol.box.server.robots.dataapi.DataApiServlet;
 import org.waveprotocol.box.server.robots.passive.RobotsGateway;
+import org.waveprotocol.box.server.rpc.AttachmentInfoServlet;
 import org.waveprotocol.box.server.rpc.AttachmentServlet;
 import org.waveprotocol.box.server.rpc.AuthenticationServlet;
 import org.waveprotocol.box.server.rpc.FetchProfilesServlet;
 import org.waveprotocol.box.server.rpc.FetchServlet;
 import org.waveprotocol.box.server.rpc.GadgetProviderServlet;
+import org.waveprotocol.box.server.rpc.LocaleServlet;
 import org.waveprotocol.box.server.rpc.NotificationServlet;
 import org.waveprotocol.box.server.rpc.SearchServlet;
 import org.waveprotocol.box.server.rpc.ServerRpcProvider;
@@ -71,8 +74,6 @@ import org.waveprotocol.box.server.waveserver.WaveIndexer;
 import org.waveprotocol.box.server.waveserver.WaveServerException;
 import org.waveprotocol.box.server.waveserver.WaveletProvider;
 import org.waveprotocol.box.server.waveserver.WaveletStateException;
-import org.waveprotocol.box.server.rpc.AttachmentInfoServlet;
-import org.waveprotocol.box.server.rpc.AttachmentServlet;
 import org.waveprotocol.wave.crypto.CertPathStore;
 import org.waveprotocol.wave.federation.FederationSettings;
 import org.waveprotocol.wave.federation.FederationTransport;
@@ -83,7 +84,6 @@ import org.waveprotocol.wave.model.wave.ParticipantIdUtil;
 import org.waveprotocol.wave.util.logging.Log;
 import org.waveprotocol.wave.util.settings.SettingsBinder;
 
-
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
@@ -93,7 +93,6 @@ import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServlet;
-import org.waveprotocol.box.server.rpc.LocaleServlet;
 
 /**
  * Wave Server entrypoint.
@@ -275,6 +274,7 @@ public class ServerMain {
     server.addServlet(PasswordAdminRobot.ROBOT_URI + "/*", PasswordAdminRobot.class);
     server.addServlet(WelcomeRobot.ROBOT_URI + "/*", WelcomeRobot.class);
     server.addServlet(RegistrationRobot.ROBOT_URI + "/*", RegistrationRobot.class);
+    server.addServlet(SolrRobot.ROBOT_URI + "/*", SolrRobot.class);
   }
 
   private static void initializeFrontend(Injector injector, ServerRpcProvider server,
