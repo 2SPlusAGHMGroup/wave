@@ -49,9 +49,9 @@ import java.util.Collection;
 import java.util.Map;
 
 /**
- * Search provider that reads user specific info from user data wavelet.
+ * Search provider that offers full text search
  * 
- * @author yurize@apache.org (Yuri Zelikov)
+ * @author Frank R. <renfeng.cn@gmail.com>
  */
 public class SolrSearchProviderImpl implements SearchProvider {
 
@@ -63,6 +63,7 @@ public class SolrSearchProviderImpl implements SearchProvider {
   /*
    * TODO find out what to do with it
    */
+  @SuppressWarnings("unused")
   private final ParticipantId sharedDomainParticipantId;
 
   /*
@@ -87,8 +88,8 @@ public class SolrSearchProviderImpl implements SearchProvider {
     Multimap<WaveId, WaveletId> currentUserWavesView = HashMultimap.create();
 
     if (numResults > 0) {
-      /*
-       * http://localhost:8983/solr/select?wt=json&q=*:*
+      /*-
+       * http://wiki.apache.org/solr/CommonQueryParameters#q
        */
       String q = "waveId_s:[* TO *]" //
           + " AND waveletId_s:[* TO *]" //
@@ -113,12 +114,9 @@ public class SolrSearchProviderImpl implements SearchProvider {
 
       GetMethod getMethod = new GetMethod();
       try {
-        // getMethod.setURI(new
-        // URI("http://localhost:8983/solr/select?wt=json&q="
-        // + URLEncoder.encode(q, "UTF-8")));
         while (true) {
-          getMethod.setURI(new URI("http://localhost:8983/solr/select?wt=json" + "&start=" + start
-              + "&rows=" + rows + "&q=" + q + "&fq=" + fq, false));
+          getMethod.setURI(new URI(SolrPerUserWaveViewHandlerImpl.SOLR_BASE_URL + "/select?wt=json"
+              + "&start=" + start + "&rows=" + rows + "&q=" + q + "&fq=" + fq, false));
 
           HttpClient httpClient = new HttpClient();
           int statusCode = httpClient.executeMethod(getMethod);

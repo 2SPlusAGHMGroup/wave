@@ -1,14 +1,18 @@
 package org.waveprotocol.box.server.robots.agent.search;
 
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Multimap;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.google.inject.Singleton;
 import com.google.wave.api.Annotation;
 import com.google.wave.api.Annotations;
 import com.google.wave.api.Blip;
+import com.google.wave.api.BlipContentRefs;
+import com.google.wave.api.Range;
 import com.google.wave.api.Wavelet;
 import com.google.wave.api.event.AnnotatedTextChangedEvent;
 import com.google.wave.api.event.BlipContributorsChangedEvent;
@@ -27,48 +31,37 @@ import com.google.wave.api.event.WaveletSelfRemovedEvent;
 import com.google.wave.api.event.WaveletTagsChangedEvent;
 import com.google.wave.api.event.WaveletTitleChangedEvent;
 
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.ParseException;
 import org.apache.commons.httpclient.HttpClient;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.waveprotocol.box.common.DocumentConstants;
-import org.waveprotocol.box.server.robots.agent.AbstractCliRobotAgent;
-import org.waveprotocol.box.server.waveserver.PerUserWaveViewProvider;
-import org.waveprotocol.box.server.waveserver.WaveMap;
-import org.waveprotocol.box.server.waveserver.WaveletContainer;
-import org.waveprotocol.box.server.waveserver.WaveletStateException;
-import org.waveprotocol.wave.model.document.operation.AnnotationBoundaryMap;
-import org.waveprotocol.wave.model.document.operation.Attributes;
-import org.waveprotocol.wave.model.document.operation.AttributesUpdate;
-import org.waveprotocol.wave.model.document.operation.DocInitializationCursor;
-import org.waveprotocol.wave.model.document.operation.DocOp;
-import org.waveprotocol.wave.model.document.operation.DocOpCursor;
-import org.waveprotocol.wave.model.document.operation.impl.InitializationCursorAdapter;
-import org.waveprotocol.wave.model.id.WaveId;
-import org.waveprotocol.wave.model.id.WaveletId;
-import org.waveprotocol.wave.model.id.WaveletName;
-import org.waveprotocol.wave.model.wave.InvalidParticipantAddress;
-import org.waveprotocol.wave.model.wave.ParticipantId;
-import org.waveprotocol.wave.model.wave.data.BlipData;
-import org.waveprotocol.wave.model.wave.data.ObservableWaveletData;
-import org.waveprotocol.wave.model.wave.data.ReadableBlipData;
-import org.waveprotocol.wave.model.wave.data.WaveViewData;
-import org.waveprotocol.wave.model.wave.data.impl.WaveViewDataImpl;
+import org.apache.commons.httpclient.URI;
+import org.apache.commons.httpclient.methods.GetMethod;
+import org.apache.http.HttpStatus;
+import org.waveprotocol.box.server.robots.agent.AbstractBaseRobotAgent;
+import org.waveprotocol.box.server.waveserver.SolrPerUserWaveViewHandlerImpl;
 import org.waveprotocol.wave.util.logging.Log;
 
-import java.io.UnsupportedEncodingException;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
-import java.util.logging.Level;
 
+/**
+ * Robot that offers full text search
+ * 
+ * @author Frank R. <renfeng.cn@gmail.com>
+ */
 @SuppressWarnings("serial")
 @Singleton
-public class SolrRobot extends AbstractCliRobotAgent {
+public class SolrRobot extends AbstractBaseRobotAgent {
 
+  /*-
+   * http://wiki.apache.org/solr/HighlightingParameters#hl.simple.pre.2Fhl.simple.post
+   */
+  private static final String PRE_TAG = "<em>";
+  private static final String POST_TAG = "</em>";
+  private static final int PRE_TAG_LENGTH = PRE_TAG.length();
+  private static final int POST_TAG_LENGTH = POST_TAG.length();
 
   // private static final Logger LOG =
   // Logger.getLogger(SolrRobot.class.getName());
@@ -76,14 +69,14 @@ public class SolrRobot extends AbstractCliRobotAgent {
 
   public static final String ROBOT_URI = AGENT_PREFIX_URI + "/search/solr";
 
-  private final PerUserWaveViewProvider waveViewProvider;
-  private final WaveMap waveMap;
+  // private final PerUserWaveViewProvider waveViewProvider;
+  // private final WaveMap waveMap;
 
   @Inject
-  public SolrRobot(Injector injector, PerUserWaveViewProvider userWaveViewProvider, WaveMap waveMap) {
+  public SolrRobot(Injector injector) {
     super(injector);
-    this.waveViewProvider = userWaveViewProvider;
-    this.waveMap = waveMap;
+    // this.waveViewProvider = userWaveViewProvider;
+    // this.waveMap = waveMap;
   }
 
   @Override
@@ -108,17 +101,17 @@ public class SolrRobot extends AbstractCliRobotAgent {
 
   @Override
   public void onWaveletSelfAdded(WaveletSelfAddedEvent event) {
-    event.getWavelet().reply("\nHello wave!");
+    event.getWavelet().reply("\nHello!");
   }
 
   @Override
   protected String getRobotProfilePageUrl() {
-    return "http://localhost:8983/solr/";
+    return SolrPerUserWaveViewHandlerImpl.SOLR_BASE_URL;
   }
 
   @Override
   protected String getRobotAvatarUrl() {
-    return "http://localhost:8983/solr/img/solr.png";
+    return SolrPerUserWaveViewHandlerImpl.SOLR_BASE_URL + "/img/solr.png";
   }
 
   @Override
@@ -137,7 +130,7 @@ public class SolrRobot extends AbstractCliRobotAgent {
   public void onDocumentChanged(DocumentChangedEvent event) {
 
     Blip blip = event.getBlip();
-    String modifiedBy = event.getModifiedBy();
+    // String modifiedBy = event.getModifiedBy();
 
     /*-
      * http://wave-protocol.googlecode.com/hg/spec/conversation/convspec.html
@@ -161,10 +154,14 @@ public class SolrRobot extends AbstractCliRobotAgent {
     for (String annotationKey : activeBlinkyBits) {
       List<Annotation> list = annotations.get(annotationKey);
       for (Annotation a : list) {
-        int start = a.getRange().getStart();
+        Range range = a.getRange();
+        int start = range.getStart();
         String message = content.substring(0, start);
-        if (message.endsWith("\n")) {
+        if (message.endsWith("\n") && start == range.getEnd()) {
+          Blip outputBlip = blip.insertInlineBlip(start - 1);
+
           message = message.substring(0, message.length() - 1);
+
           /*
            * XXX the commented code does work as expected
            */
@@ -174,52 +171,28 @@ public class SolrRobot extends AbstractCliRobotAgent {
           if (endOfPreviousLine != -1) {
             message = message.substring(endOfPreviousLine + 1);
           }
-          CommandLine commandLine = null;
-          try {
-            commandLine = preprocessCommand(message);
-          } catch (IllegalArgumentException e) {
-            appendLine(blip.insertInlineBlip(start - 1), e.getMessage());
+
+          // /*
+          // * XXX only listens to the creator
+          // */
+          // if (modifiedBy.equals(wavelet.getCreator())) {
+          Wavelet wavelet = event.getWavelet();
+          /*
+           * XXX the creator will be aware of the query
+           */
+          String creator = wavelet.getCreator();
+          if (wavelet.getParticipants().contains(creator)) {
+            search(message, creator, outputBlip);
+          } else {
+            String robotMessage =
+                "This wave wasn't created by you. To execute solr commands, invite me, solr-bot, to a wave created by you.";
+            outputBlip.append(robotMessage);
           }
-          if (commandLine != null) {
-            if (commandLine.hasOption("help")
-                || /* Or if only options */(commandLine.getArgs().length
-                    - commandLine.getOptions().length <= 1)) {
-              appendLine(blip.insertInlineBlip(start - 1), getFullDescription());
-            } else {
-              // /*
-              // * XXX only listens to the creator
-              // */
-              // if (modifiedBy.equals(wavelet.getCreator())) {
-              Wavelet wavelet = event.getWavelet();
-              /*
-               * XXX the creator will be aware of the query
-               */
-              String robotMessage;
-              if (wavelet.getParticipants().contains(wavelet.getCreator())) {
-                robotMessage = maybeExecuteCommand(commandLine, modifiedBy);
-                appendLine(blip.insertInlineBlip(start - 1), robotMessage);
-              } else {
-                robotMessage = "This wave wasn't created by you. To execute solr commands, invite me, solr-bot, to a wave created by you.";
-                appendLine(
-                    blip.insertInlineBlip(start - 1),
-                    robotMessage);
-              }
-            }
-          }
+
         }
       }
     }
 
-    return;
-  }
-
-  private void appendLine(Blip blip, String message) {
-    // blip.reply().append(new Markup(message));
-    // blip.appendMarkup(message);
-    // blip.continueThread().appendMarkup(message);
-    // blip.insertInlineBlip(6).appendMarkup(message);
-    // Annotations annotations = blip.getAnnotations();
-    blip.appendMarkup(message);
     return;
   }
 
@@ -267,8 +240,7 @@ public class SolrRobot extends AbstractCliRobotAgent {
 
   @Override
   public void onWaveletSelfRemoved(WaveletSelfRemovedEvent event) {
-    // TODO Auto-generated method stub
-    super.onWaveletSelfRemoved(event);
+    event.getWavelet().reply("\nGoodbye!");
   }
 
   @Override
@@ -289,306 +261,419 @@ public class SolrRobot extends AbstractCliRobotAgent {
     super.onOperationError(event);
   }
 
-  @Override
-  protected String maybeExecuteCommand(CommandLine commandLine, String modifiedBy) {
+  private void search(String query, String creator, Blip outputBlip) {
 
-    String robotMessage;
-
-    String[] args = commandLine.getArgs();
-    if ("search".equals(args[1])) {
-      robotMessage = "hello <a href='/'>wave</a>";
-    } else if ("update".equals(args[1])) {
-      robotMessage = update(modifiedBy);
-    } else {
-      robotMessage = null;
+    if (query.length() <= 0) {
+      /*
+       * ignore empty query
+       */
+      return;
     }
 
-    return robotMessage;
-  }
+    String outputWaveId = outputBlip.getWaveId().serialise();
 
-  private String update(String modifiedBy) {
+    // StringBuilder messageBuilder = new StringBuilder();
+    // messageBuilder.append("hello <a href='/'>wave</a>");
 
-    String robotMessage = null;
+    /*-
+     * http://wiki.apache.org/solr/CommonQueryParameters#q
+     */
+    String q = "waveId_s:[* TO *]" //
+        + " AND waveletId_s:[* TO *]" //
+        + " AND docName_s:[* TO *]" //
+        + " AND lmt_l:[* TO *]" //
+        + " AND with_txt:[* TO *]" //
+        + " AND text_t:[* TO *]" //
+        + " AND in_ss:[* TO *]";
 
+    /*
+     * XXX will it be better to replace lucene with edismax?
+     */
+    String userQuery = query.replaceAll("\\bin:", "in_ss:").replaceAll("\\bwith:", "with_txt:");
+    String fq = "{!lucene q.op=AND df=text_t}with_txt:" + creator + " AND (" + userQuery + ")";
+
+    int start = 0;
+    int rows = 10;
+    int count = 0;
+
+    GetMethod getMethod = new GetMethod();
     try {
-      Multimap<WaveId, WaveletId> currentUserWavesView =
-          waveViewProvider.retrievePerUserWaveView(ParticipantId.of(modifiedBy));
-      // Loop over the user waves view.
-      for (WaveId waveId : currentUserWavesView.keySet()) {
-        WaveViewData view = null;
-        for (WaveletId waveletId : currentUserWavesView.get(waveId)) {
-          WaveletContainer waveletContainer = null;
-          WaveletName waveletname = WaveletName.of(waveId, waveletId);
+      while (true) {
+        /*-
+         * http://wiki.apache.org/solr/HighlightingParameters
+         */
+        getMethod.setURI(new URI(SolrPerUserWaveViewHandlerImpl.SOLR_BASE_URL + "/select?wt=json"
+            + "&hl=true&hl.fl=text_t&hl.q=" + userQuery + "&start=" + start + "&rows=" + rows
+            + "&q=" + q + "&fq=" + fq, false));
 
-          // TODO (alown): Find some way to use isLocalWavelet to do this
-          // properly!
-          try {
-            if (LOG.isFineLoggable()) {
-              LOG.fine("Trying as a remote wavelet");
-            }
-            waveletContainer = waveMap.getRemoteWavelet(waveletname);
-          } catch (WaveletStateException e) {
-            LOG.severe(String.format("Failed to get remote wavelet %s", waveletname.toString()), e);
-          } catch (NullPointerException e) {
-            // This is a fairly normal case of it being a local-only wave.
-            // Yet this only seems to appear in the test suite.
-            // Continuing is completely harmless here.
-            LOG.info(
-                String.format("%s is definitely not a remote wavelet. (Null key)",
-                    waveletname.toString()), e);
+        HttpClient httpClient = new HttpClient();
+        int statusCode = httpClient.executeMethod(getMethod);
+        if (statusCode != HttpStatus.SC_OK) {
+          LOG.warning("Failed to execute query: " + query);
+          // return "Failed to execute query: " + query;
+          outputBlip.append("Failed to execute query: " + query);
+          return;
+        }
+
+        JsonObject json =
+            new JsonParser().parse(new InputStreamReader(getMethod.getResponseBodyAsStream()))
+                .getAsJsonObject();
+        JsonObject responseJson = json.getAsJsonObject("response");
+        JsonArray docsJson = responseJson.getAsJsonArray("docs");
+        if (docsJson.size() == 0) {
+          break;
+        }
+
+        JsonObject highlighting = json.getAsJsonObject("highlighting");
+
+        /*
+         * TODO insert at the beginning the number of waves found
+         */
+        // outputBlip.append("Found: " +
+        // responseJson.getAsJsonPrimitive("numFound") + "\n");
+
+        Iterator<JsonElement> docJsonIterator = docsJson.iterator();
+        while (docJsonIterator.hasNext()) {
+          JsonObject docJson = docJsonIterator.next().getAsJsonObject();
+          String id = docJson.getAsJsonPrimitive("id").getAsString();
+          if (id.startsWith(outputWaveId)) {
+            continue;
           }
 
-          if (waveletContainer == null) {
-            try {
-              if (LOG.isFineLoggable()) {
-                LOG.fine("Trying as a local wavelet");
+          count++;
+
+          JsonObject snippetJson = highlighting.getAsJsonObject(id);
+          JsonArray textsJson = snippetJson.getAsJsonArray("text_t");
+          Iterator<JsonElement> textJsonIterator = textsJson.iterator();
+          while (textJsonIterator.hasNext()) {
+            JsonElement textJson = textJsonIterator.next();
+            String snippet = textJson.getAsString().trim();
+            // String result =
+            // "<p><a href='/#" + id + "'>wave://" + id + "</a><br/>" + snippet
+            // + "</p>";
+            outputBlip.append("\n" + count + " ");
+
+            int linkStartIndex = outputBlip.getContent().length();
+            outputBlip.append("wave://" + id);
+            int linkEndIndex = outputBlip.getContent().length();
+            outputBlip.append("\n");
+            BlipContentRefs.range(outputBlip, linkStartIndex, linkEndIndex).annotate("link/wave",
+                id);
+
+            int lastTag = -1;
+            int highlightStartIndex = -1;
+            int highlightEndIndex = -1;
+            while (true) {
+              int preTag = snippet.indexOf(PRE_TAG, lastTag);
+              if (preTag != -1) {
+                int postTag = snippet.indexOf(POST_TAG, preTag + PRE_TAG_LENGTH);
+                if (lastTag != -1) {
+                  outputBlip.append(snippet.substring(lastTag, preTag));
+                  BlipContentRefs.range(outputBlip, highlightStartIndex, highlightEndIndex)
+                      .annotate("style/backgroundColor", "rgb(255,255,0)");
+                } else {
+                  outputBlip.append(snippet.substring(0, preTag));
+                }
+                highlightStartIndex = outputBlip.getContent().length();
+                outputBlip.append(snippet.substring(preTag + PRE_TAG_LENGTH, postTag));
+                highlightEndIndex = outputBlip.getContent().length();
+                lastTag = postTag + POST_TAG_LENGTH;
+              } else {
+                if (lastTag != -1) {
+                  outputBlip.append(snippet.substring(lastTag));
+                  BlipContentRefs.range(outputBlip, highlightStartIndex, highlightEndIndex)
+                      .annotate("style/backgroundColor", "rgb(255,255,0)");
+                } else {
+                  outputBlip.append(snippet);
+                }
+                break;
               }
-              waveletContainer = waveMap.getLocalWavelet(waveletname);
-            } catch (WaveletStateException e) {
-              LOG.severe(String.format("Failed to get local wavelet %s", waveletname.toString()), e);
-            }
-          }
 
-          // TODO (Yuri Z.) This loop collects all the wavelets that match the
-          // query, so the view is determined by the query. Instead we should
-          // look at the user's wave view and determine if the view matches
-          // the query.
-          try {
-            // if (waveletContainer == null ||
-            // !waveletContainer.applyFunction(matchesFunction)) {
-            // LOG.fine("----doesn't match: " + waveletContainer);
-            // continue;
-            // }
-            if (view == null) {
-              view = WaveViewDataImpl.create(waveId);
             }
-            // Just keep adding all the relevant wavelets in this wave.
-            view.addWavelet(waveletContainer.copyWaveletData());
-          } catch (WaveletStateException e) {
-            LOG.warning("Failed to access wavelet " + waveletContainer.getWaveletName(), e);
+
+            outputBlip.append("\n");
+
           }
         }
-        if (view != null) {
-          HttpClient httpClient = new HttpClient();
-          // results.put(waveId, view);
-          for (ObservableWaveletData waveletData : view.getWavelets()) {
-            System.out.println("waveId = " + waveletData.getWaveId());
-            for (String docName : waveletData.getDocumentIds()) {
-              BlipData document = waveletData.getDocument(docName);
-              System.out.println("docId = " + document.getId());
-              DocOp docOp = document.getContent().asOperation();
-              String x = x(docOp, waveletData);
-              System.out.println(x);
-//              /*
-//               * TODO update solr index with wave id, wavelet id, blip id, and
-//               * content TODO solr doc id should be bookmarkerable, i.e. wave id
-//               * (?)
-//               */
-//              HttpPost httpPost =
-//                  new HttpPost("http://localhost:8983/solr/update/json?commit=true");
-//              httpPost.setHeader("Content-Type", "application/json");
-//              httpPost.setEntity(new StringEntity("{'waveId':''}"));
-            }
-          }
+
+        if (docsJson.size() < rows) {
+          break;
         }
+
+        start += rows;
       }
-      robotMessage = "hello <a href='/'>wave</a>";
-    } catch (InvalidParticipantAddress e) {
-      robotMessage = e.getMessage();
-      LOG.log(Level.SEVERE, "userId: " + modifiedBy, e);
-//    } catch (UnsupportedEncodingException e) {
-//      robotMessage = e.getMessage();
-//      LOG.log(Level.SEVERE, "userId: " + modifiedBy, e);
+
+      BlipContentRefs.range(outputBlip, 0, 1).insert("Found: " + count);
+
+    } catch (IOException e) {
+      LOG.warning("Failed to execute query: " + query);
+      // return "Failed to execute query: " + query;
+      outputBlip.append("Failed to execute query: " + query);
+      return;
+    } finally {
+      getMethod.releaseConnection();
     }
 
-    return robotMessage;
+    // return messageBuilder.toString();
+    return;
   }
 
-  private String x(DocOp docOp, final ObservableWaveletData wavelet) {
+  // private String update(String modifiedBy) {
+  //
+  // String robotMessage = null;
+  //
+  // try {
+  // Multimap<WaveId, WaveletId> currentUserWavesView =
+  // waveViewProvider.retrievePerUserWaveView(ParticipantId.of(modifiedBy));
+  // // Loop over the user waves view.
+  // for (WaveId waveId : currentUserWavesView.keySet()) {
+  // WaveViewData view = null;
+  // for (WaveletId waveletId : currentUserWavesView.get(waveId)) {
+  // WaveletContainer waveletContainer = null;
+  // WaveletName waveletname = WaveletName.of(waveId, waveletId);
+  //
+  // // TODO (alown): Find some way to use isLocalWavelet to do this
+  // // properly!
+  // try {
+  // if (LOG.isFineLoggable()) {
+  // LOG.fine("Trying as a remote wavelet");
+  // }
+  // waveletContainer = waveMap.getRemoteWavelet(waveletname);
+  // } catch (WaveletStateException e) {
+  // LOG.severe(String.format("Failed to get remote wavelet %s",
+  // waveletname.toString()), e);
+  // } catch (NullPointerException e) {
+  // // This is a fairly normal case of it being a local-only wave.
+  // // Yet this only seems to appear in the test suite.
+  // // Continuing is completely harmless here.
+  // LOG.info(
+  // String.format("%s is definitely not a remote wavelet. (Null key)",
+  // waveletname.toString()), e);
+  // }
+  //
+  // if (waveletContainer == null) {
+  // try {
+  // if (LOG.isFineLoggable()) {
+  // LOG.fine("Trying as a local wavelet");
+  // }
+  // waveletContainer = waveMap.getLocalWavelet(waveletname);
+  // } catch (WaveletStateException e) {
+  // LOG.severe(String.format("Failed to get local wavelet %s",
+  // waveletname.toString()), e);
+  // }
+  // }
+  //
+  // // TODO (Yuri Z.) This loop collects all the wavelets that match the
+  // // query, so the view is determined by the query. Instead we should
+  // // look at the user's wave view and determine if the view matches
+  // // the query.
+  // try {
+  // // if (waveletContainer == null ||
+  // // !waveletContainer.applyFunction(matchesFunction)) {
+  // // LOG.fine("----doesn't match: " + waveletContainer);
+  // // continue;
+  // // }
+  // if (view == null) {
+  // view = WaveViewDataImpl.create(waveId);
+  // }
+  // // Just keep adding all the relevant wavelets in this wave.
+  // view.addWavelet(waveletContainer.copyWaveletData());
+  // } catch (WaveletStateException e) {
+  // LOG.warning("Failed to access wavelet " +
+  // waveletContainer.getWaveletName(), e);
+  // }
+  // }
+  // if (view != null) {
+  // HttpClient httpClient = new HttpClient();
+  // // results.put(waveId, view);
+  // for (ObservableWaveletData waveletData : view.getWavelets()) {
+  // System.out.println("waveId = " + waveletData.getWaveId());
+  // for (String docName : waveletData.getDocumentIds()) {
+  // BlipData document = waveletData.getDocument(docName);
+  // System.out.println("docId = " + document.getId());
+  // DocOp docOp = document.getContent().asOperation();
+  // String x = x(docOp, waveletData);
+  // System.out.println(x);
+  // // /*
+  // // * TODO update solr index with wave id, wavelet id, blip id, and
+  // // * content TODO solr doc id should be bookmarkerable, i.e. wave id
+  // // * (?)
+  // // */
+  // // HttpPost httpPost =
+  // // new HttpPost(SolrPerUserWaveViewHandlerImpl.SOLR_BASE_URL +
+  // // "/update/json?commit=true");
+  // // httpPost.setHeader("Content-Type", "application/json");
+  // // httpPost.setEntity(new StringEntity("{'waveId':''}"));
+  // }
+  // }
+  // }
+  // }
+  // robotMessage = "hello <a href='/'>wave</a>";
+  // } catch (InvalidParticipantAddress e) {
+  // robotMessage = e.getMessage();
+  // LOG.log(Level.SEVERE, "userId: " + modifiedBy, e);
+  // // } catch (UnsupportedEncodingException e) {
+  // // robotMessage = e.getMessage();
+  // // LOG.log(Level.SEVERE, "userId: " + modifiedBy, e);
+  // }
+  //
+  // return robotMessage;
+  // }
 
-    final StringBuilder sb = new StringBuilder();
-    sb.append(collateTextForOps(Lists.newArrayList(docOp)));
-    sb.append(" ");
-    docOp.apply(InitializationCursorAdapter.adapt(new DocInitializationCursor() {
-      @Override
-      public void annotationBoundary(AnnotationBoundaryMap map) {
-      }
+  // private String x(DocOp docOp, final ObservableWaveletData wavelet) {
+  //
+  // final StringBuilder sb = new StringBuilder();
+  // sb.append(collateTextForOps(Lists.newArrayList(docOp)));
+  // sb.append(" ");
+  // docOp.apply(InitializationCursorAdapter.adapt(new DocInitializationCursor()
+  // {
+  // @Override
+  // public void annotationBoundary(AnnotationBoundaryMap map) {
+  // }
+  //
+  // @Override
+  // public void characters(String chars) {
+  // // No chars in the conversation manifest
+  // }
+  //
+  // @Override
+  // public void elementEnd() {
+  // }
+  //
+  // @Override
+  // public void elementStart(String type, Attributes attrs) {
+  // // if (sb.length() >= maxSnippetLength) {
+  // // return;
+  // // }
+  //
+  // if (DocumentConstants.BLIP.equals(type)) {
+  // String blipId = attrs.get(DocumentConstants.BLIP_ID);
+  // if (blipId != null) {
+  // ReadableBlipData document = wavelet.getDocument(blipId);
+  // if (document == null) {
+  // // We see this when a blip has been deleted
+  // return;
+  // }
+  // sb.append(collateTextForDocuments(Arrays.asList(document)));
+  // sb.append(" ");
+  // }
+  // }
+  // }
+  // }));
+  //
+  // return sb.toString();
+  // }
+  //
+  // /*
+  // * copied from Snippets
+  // */
+  // /**
+  // * Concatenates all of the text of the specified blips into a single String.
+  // *
+  // * @param documents the documents to concatenate.
+  // * @return A String containing the characters from all documents.
+  // */
+  // private String collateTextForDocuments(Iterable<? extends ReadableBlipData>
+  // documents) {
+  // ArrayList<DocOp> docOps = new ArrayList<DocOp>();
+  // for (ReadableBlipData blipData : documents) {
+  // docOps.add(blipData.getContent().asOperation());
+  // }
+  // return collateTextForOps(docOps);
+  // }
+  //
+  // /*
+  // * copied from Snippets with slight modifications
+  // */
+  // /**
+  // * Concatenates all of the text of the specified docops into a single
+  // String.
+  // *
+  // * @param documentops the document operations to concatenate.
+  // * @return A String containing the characters from the operations.
+  // */
+  // private String collateTextForOps(Iterable<DocOp> documentops) {
+  // final StringBuilder resultBuilder = new StringBuilder();
+  // for (DocOp docOp : documentops) {
+  // docOp.apply(InitializationCursorAdapter.adapt(new DocOpCursor() {
+  // @Override
+  // public void characters(String s) {
+  // resultBuilder.append(s);
+  // }
+  //
+  // @Override
+  // public void annotationBoundary(AnnotationBoundaryMap map) {
+  // }
+  //
+  // @Override
+  // public void elementStart(String type, Attributes attrs) {
+  // }
+  //
+  // @Override
+  // public void elementEnd() {
+  // }
+  //
+  // @Override
+  // public void retain(int itemCount) {
+  // }
+  //
+  // @Override
+  // public void deleteCharacters(String chars) {
+  // }
+  //
+  // @Override
+  // public void deleteElementStart(String type, Attributes attrs) {
+  // }
+  //
+  // @Override
+  // public void deleteElementEnd() {
+  // }
+  //
+  // @Override
+  // public void replaceAttributes(Attributes oldAttrs, Attributes newAttrs) {
+  // }
+  //
+  // @Override
+  // public void updateAttributes(AttributesUpdate attrUpdate) {
+  // }
+  // }));
+  // }
+  // return resultBuilder.toString().trim();
+  // }
 
-      @Override
-      public void characters(String chars) {
-        // No chars in the conversation manifest
-      }
-
-      @Override
-      public void elementEnd() {
-      }
-
-      @Override
-      public void elementStart(String type, Attributes attrs) {
-        // if (sb.length() >= maxSnippetLength) {
-        // return;
-        // }
-
-        if (DocumentConstants.BLIP.equals(type)) {
-          String blipId = attrs.get(DocumentConstants.BLIP_ID);
-          if (blipId != null) {
-            ReadableBlipData document = wavelet.getDocument(blipId);
-            if (document == null) {
-              // We see this when a blip has been deleted
-              return;
-            }
-            sb.append(collateTextForDocuments(Arrays.asList(document)));
-            sb.append(" ");
-          }
-        }
-      }
-    }));
-
-    return sb.toString();
-  }
-
-  /*
-   * copied from Snippets
-   */
-  /**
-   * Concatenates all of the text of the specified blips into a single String.
-   * 
-   * @param documents the documents to concatenate.
-   * @return A String containing the characters from all documents.
-   */
-  private String collateTextForDocuments(Iterable<? extends ReadableBlipData> documents) {
-    ArrayList<DocOp> docOps = new ArrayList<DocOp>();
-    for (ReadableBlipData blipData : documents) {
-      docOps.add(blipData.getContent().asOperation());
-    }
-    return collateTextForOps(docOps);
-  }
-
-  /*
-   * copied from Snippets with slight modifications
-   */
-  /**
-   * Concatenates all of the text of the specified docops into a single String.
-   * 
-   * @param documentops the document operations to concatenate.
-   * @return A String containing the characters from the operations.
-   */
-  private String collateTextForOps(Iterable<DocOp> documentops) {
-    final StringBuilder resultBuilder = new StringBuilder();
-    for (DocOp docOp : documentops) {
-      docOp.apply(InitializationCursorAdapter.adapt(new DocOpCursor() {
-        @Override
-        public void characters(String s) {
-          resultBuilder.append(s);
-        }
-
-        @Override
-        public void annotationBoundary(AnnotationBoundaryMap map) {
-        }
-
-        @Override
-        public void elementStart(String type, Attributes attrs) {
-        }
-
-        @Override
-        public void elementEnd() {
-        }
-
-        @Override
-        public void retain(int itemCount) {
-        }
-
-        @Override
-        public void deleteCharacters(String chars) {
-        }
-
-        @Override
-        public void deleteElementStart(String type, Attributes attrs) {
-        }
-
-        @Override
-        public void deleteElementEnd() {
-        }
-
-        @Override
-        public void replaceAttributes(Attributes oldAttrs, Attributes newAttrs) {
-        }
-
-        @Override
-        public void updateAttributes(AttributesUpdate attrUpdate) {
-        }
-      }));
-    }
-    return resultBuilder.toString().trim();
-  }
-
-  @Override
+  // @Override
   public String getShortDescription() {
     return "short desc";
   }
 
-  @Override
+  // @Override
   public String getFullDescription() {
     return "full desc";
   }
 
-  @Override
+  // @Override
   public String getCommandName() {
     return "solr";
   }
 
-  @Override
+  // @Override
   public String getCmdLineSyntax() {
     return "update|search";
   }
 
-  @Override
+  // @Override
   public String getExample() {
     return "example";
   }
 
-  @Override
+  // @Override
   public int getMinNumOfArguments() {
     return 0;
   }
 
-  @Override
+  // @Override
   public int getMaxNumOfArguments() {
     return Integer.MAX_VALUE;
-  }
-
-  @Override
-  protected CommandLine preprocessCommand(String lastLine) throws IllegalArgumentException {
-
-    CommandLine commandLine = null;
-    try {
-      commandLine = parse(lastLine.split(" "));
-    } catch (ParseException e) {
-      throw new IllegalArgumentException(e);
-    }
-    String[] args = commandLine.getArgs();
-    if (!args[0].equals(getCommandName())) {
-      return null;
-    }
-    int argsNum = args.length - commandLine.getOptions().length - 1;
-    // If there are only options in the command - then it is also invalid and
-    // have to display usage anyway.
-    if ((argsNum > 0) && (argsNum < getMinNumOfArguments() || argsNum > getMaxNumOfArguments())) {
-      String message = null;
-      if (getMinNumOfArguments() == getMaxNumOfArguments()) {
-        message =
-            String.format("Invalid number of arguments. Expected: %d , actual: %d %s",
-                getMinNumOfArguments(), argsNum, getUsage());
-      } else {
-        message =
-            String.format(
-                "Invalid number of arguments. Expected between %d and %d, actual: %d. %s",
-                getMinNumOfArguments(), getMaxNumOfArguments(), argsNum, getUsage());
-      }
-      throw new IllegalArgumentException(message);
-    }
-
-    return commandLine;
   }
 
 }

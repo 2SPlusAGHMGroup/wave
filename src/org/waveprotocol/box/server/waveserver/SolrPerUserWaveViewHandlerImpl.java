@@ -60,9 +60,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Lucene based implementation of {@link PerUserWaveViewHandler}.
+ * Solr based implementation of {@link PerUserWaveViewHandler}.
  * 
- * @author yurize@apache.org (Yuri Zelikov)
+ * @author Frank R. <renfeng.cn@gmail.com>
  */
 @Singleton
 public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, Subscriber {
@@ -72,6 +72,8 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
 
   // TODO (Yuri Z.): Inject executor.
   private static final Executor executor = Executors.newSingleThreadExecutor();
+
+  public static final String SOLR_BASE_URL = "http://localhost:8983/solr";
 
   private final ReadableWaveletDataProvider waveletProvider;
 
@@ -224,7 +226,7 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
      * update solr index
      */
 
-    PostMethod postMethod = new PostMethod("http://localhost:8983/solr/update/json?commit=true");
+    PostMethod postMethod = new PostMethod(SOLR_BASE_URL + "/update/json?commit=true");
     // postMethod.setRequestHeader("Content-Type", "application/json");
     try {
       JsonArray docsJson = new JsonArray();
