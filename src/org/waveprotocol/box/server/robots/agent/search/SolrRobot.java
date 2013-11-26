@@ -36,7 +36,7 @@ import org.apache.commons.httpclient.URI;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.http.HttpStatus;
 import org.waveprotocol.box.server.robots.agent.AbstractBaseRobotAgent;
-import org.waveprotocol.box.server.waveserver.SolrPerUserWaveViewHandlerImpl;
+import org.waveprotocol.box.server.waveserver.SolrSearchProviderImpl;
 import org.waveprotocol.wave.util.logging.Log;
 
 import java.io.IOException;
@@ -106,12 +106,12 @@ public class SolrRobot extends AbstractBaseRobotAgent {
 
   @Override
   protected String getRobotProfilePageUrl() {
-    return SolrPerUserWaveViewHandlerImpl.SOLR_BASE_URL;
+    return SolrSearchProviderImpl.SOLR_BASE_URL;
   }
 
   @Override
   protected String getRobotAvatarUrl() {
-    return SolrPerUserWaveViewHandlerImpl.SOLR_BASE_URL + "/img/solr.png";
+    return SolrSearchProviderImpl.SOLR_BASE_URL + "/img/solr.png";
   }
 
   @Override
@@ -275,22 +275,11 @@ public class SolrRobot extends AbstractBaseRobotAgent {
     // StringBuilder messageBuilder = new StringBuilder();
     // messageBuilder.append("hello <a href='/'>wave</a>");
 
-    /*-
-     * http://wiki.apache.org/solr/CommonQueryParameters#q
-     */
-    String q = "waveId_s:[* TO *]" //
-        + " AND waveletId_s:[* TO *]" //
-        + " AND docName_s:[* TO *]" //
-        + " AND lmt_l:[* TO *]" //
-        + " AND with_txt:[* TO *]" //
-        + " AND text_t:[* TO *]" //
-        + " AND in_ss:[* TO *]";
-
     /*
      * XXX will it be better to replace lucene with edismax?
      */
-    String userQuery = query.replaceAll("\\bin:", "in_ss:").replaceAll("\\bwith:", "with_txt:");
-    String fq = "{!lucene q.op=AND df=text_t}with_txt:" + creator + " AND (" + userQuery + ")";
+    String userQuery = SolrSearchProviderImpl.buildUserQuery(query);
+    String fq = SolrSearchProviderImpl.FILTER_QUERY_PREFIX + creator + " AND (" + userQuery + ")";
 
     int start = 0;
     int rows = 10;
@@ -302,9 +291,9 @@ public class SolrRobot extends AbstractBaseRobotAgent {
         /*-
          * http://wiki.apache.org/solr/HighlightingParameters
          */
-        getMethod.setURI(new URI(SolrPerUserWaveViewHandlerImpl.SOLR_BASE_URL + "/select?wt=json"
+        getMethod.setURI(new URI(SolrSearchProviderImpl.SOLR_BASE_URL + "/select?wt=json"
             + "&hl=true&hl.fl=text_t&hl.q=" + userQuery + "&start=" + start + "&rows=" + rows
-            + "&q=" + q + "&fq=" + fq, false));
+            + "&q=" + SolrSearchProviderImpl.Q + "&fq=" + fq, false));
 
         HttpClient httpClient = new HttpClient();
         int statusCode = httpClient.executeMethod(getMethod);

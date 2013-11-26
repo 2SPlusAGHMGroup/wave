@@ -73,8 +73,6 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
   // TODO (Yuri Z.): Inject executor.
   private static final Executor executor = Executors.newSingleThreadExecutor();
 
-  public static final String SOLR_BASE_URL = "http://localhost:8983/solr";
-
   private final ReadableWaveletDataProvider waveletProvider;
 
   /**
@@ -226,7 +224,8 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
      * update solr index
      */
 
-    PostMethod postMethod = new PostMethod(SOLR_BASE_URL + "/update/json?commit=true");
+    PostMethod postMethod =
+        new PostMethod(SolrSearchProviderImpl.SOLR_BASE_URL + "/update/json?commit=true");
     // postMethod.setRequestHeader("Content-Type", "application/json");
     try {
       JsonArray docsJson = new JsonArray();
@@ -298,20 +297,40 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
 
   @Override
   public void waveletUpdate(final ReadableWaveletData wavelet, DeltaSequence deltas) {
-    updateIndex(wavelet);
+    /*
+     * for optimization, see waveletCommitted(WaveletName, HashedVersion)
+     */
+    // updateIndex(wavelet);
   }
 
   @Override
-  public void waveletCommitted(WaveletName waveletName, HashedVersion version) {
+  public void waveletCommitted(final WaveletName waveletName, final HashedVersion version) {
+
+    Preconditions.checkNotNull(waveletName);
+
     /*
-     * XXX don't update index here to prevent lock
+     * XXX don't update index here (on current thread) to prevent lock
      */
-    // try {
-    // ReadableWaveletData waveletData =
-    // waveletProvider.getReadableWaveletData(waveletName);
-    // updateIndex(waveletData);
-    // } catch (WaveServerException e) {
-    // LOG.log(Level.SEVERE, "Failed to update index for " + waveletName, e);
-    // }
+    ListenableFutureTask<Void> task = new ListenableFutureTask<Void>(new Callable<Void>() {
+
+      @Override
+      public Void call() throws Exception {
+        ReadableWaveletData waveletData;
+        try {
+          waveletData = waveletProvider.getReadableWaveletData(waveletName);
+          System.out.println("commit " + version + " " + waveletData.getVersion());
+          if (waveletData.getVersion() == version.getVersion()) {
+            updateIndex(waveletData);
+          }
+        } catch (WaveServerException e) {
+          LOG.log(Level.SEVERE, "Failed to update index for " + waveletName, e);
+          throw e;
+        }
+        return null;
+      }
+    });
+    executor.execute(task);
+
+    return;
   }
 }
