@@ -57,6 +57,38 @@ public class SolrSearchProviderImpl implements SearchProvider {
 
   private static final Log LOG = Log.get(SolrSearchProviderImpl.class);
 
+  /*
+   * TODO make it configurable
+   */
+  public static final String SOLR_BASE_URL = "http://localhost:8983/solr";
+
+  /*-
+   * http://wiki.apache.org/solr/CommonQueryParameters#q
+   */
+  public static final String Q = "waveId_s:[* TO *]" //
+      + " AND waveletId_s:[* TO *]" //
+      + " AND docName_s:[* TO *]" //
+      + " AND lmt_l:[* TO *]" //
+      + " AND with_txt:[* TO *]" //
+      + " AND text_t:[* TO *]" //
+      + " AND in_ss:[* TO *]";
+
+  /*-
+   * XXX will it be better to replace lucene with edismax?
+   * mm (Minimum 'Should' Match)
+   * http://wiki.apache.org/solr/ExtendedDisMax#mm_.28Minimum_.27Should.27_Match.29
+   * 
+   * XXX not at the moment! q.op=AND is ignored by !edismax, see
+   * 
+   * ExtendedDismaxQParser (edismax) does not obey q.op for queries with operators
+   * https://issues.apache.org/jira/browse/SOLR-3741
+   * 
+   * ExtendedDismaxQParser (edismax) does not obey q.op for parenthesized sub-queries
+   * https://issues.apache.org/jira/browse/SOLR-3740
+   * 
+   */
+  public static final String FILTER_QUERY_PREFIX = "{!lucene q.op=AND df=text_t}with_txt:";
+
   private final WaveDigester digester;
   private final WaveMap waveMap;
 
@@ -70,6 +102,10 @@ public class SolrSearchProviderImpl implements SearchProvider {
    * XXX remove this since
    */
   // private final PerUserWaveViewProvider waveViewProvider;
+
+  public static String buildUserQuery(String query) {
+    return query.replaceAll("\\bin:", "in_ss:").replaceAll("\\bwith:", "with_txt:");
+  }
 
   @Inject
   public SolrSearchProviderImpl(@Named(CoreSettings.WAVE_SERVER_DOMAIN) final String waveDomain,
@@ -88,25 +124,10 @@ public class SolrSearchProviderImpl implements SearchProvider {
     Multimap<WaveId, WaveletId> currentUserWavesView = HashMultimap.create();
 
     if (numResults > 0) {
-      /*-
-       * http://wiki.apache.org/solr/CommonQueryParameters#q
-       */
-      String q = "waveId_s:[* TO *]" //
-          + " AND waveletId_s:[* TO *]" //
-          + " AND docName_s:[* TO *]" //
-          + " AND lmt_l:[* TO *]" //
-          + " AND with_txt:[* TO *]" //
-          + " AND text_t:[* TO *]" //
-          + " AND in_ss:[* TO *]";
 
-      /*
-       * XXX will it be better to replace lucene with edismax?
-       */
-      String fq = "{!lucene q.op=AND df=text_t}with_txt:" + user.getAddress();
+      String fq = FILTER_QUERY_PREFIX + user.getAddress();
       if (query.length() > 0) {
-        fq +=
-            " AND (" + query.replaceAll("\\bin:", "in_ss:").replaceAll("\\bwith:", "with_txt:")
-                + ")";
+        fq += " AND (" + buildUserQuery(query) + ")";
       }
 
       int start = startAt;
@@ -115,8 +136,8 @@ public class SolrSearchProviderImpl implements SearchProvider {
       GetMethod getMethod = new GetMethod();
       try {
         while (true) {
-          getMethod.setURI(new URI(SolrPerUserWaveViewHandlerImpl.SOLR_BASE_URL + "/select?wt=json"
-              + "&start=" + start + "&rows=" + rows + "&q=" + q + "&fq=" + fq, false));
+          getMethod.setURI(new URI(SOLR_BASE_URL + "/select?wt=json" + "&start=" + start + "&rows="
+              + rows + "&q=" + Q + "&fq=" + fq, false));
 
           HttpClient httpClient = new HttpClient();
           int statusCode = httpClient.executeMethod(getMethod);
