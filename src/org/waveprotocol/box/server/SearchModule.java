@@ -37,8 +37,8 @@ import org.waveprotocol.box.server.waveserver.PerUserWaveViewHandler;
 import org.waveprotocol.box.server.waveserver.PerUserWaveViewProvider;
 import org.waveprotocol.box.server.waveserver.SearchProvider;
 import org.waveprotocol.box.server.waveserver.SimpleSearchProviderImpl;
-import org.waveprotocol.box.server.waveserver.SolrPerUserWaveViewHandlerImpl;
 import org.waveprotocol.box.server.waveserver.SolrSearchProviderImpl;
+import org.waveprotocol.box.server.waveserver.SolrWaveIndexerImpl;
 import org.waveprotocol.box.server.waveserver.WaveIndexer;
 
 /**
@@ -74,13 +74,17 @@ public class SearchModule extends AbstractModule {
       }
     } else if ("solr".equals(searchType)) {
       bind(SearchProvider.class).to(SolrSearchProviderImpl.class).in(Singleton.class);
-      bind(PerUserWaveViewProvider.class).to(SolrPerUserWaveViewHandlerImpl.class).in(
-          Singleton.class);
-      bind(PerUserWaveViewBus.Listener.class).to(SolrPerUserWaveViewHandlerImpl.class).in(
-          Singleton.class);
-      bind(PerUserWaveViewHandler.class).to(SolrPerUserWaveViewHandlerImpl.class).in(
-          Singleton.class);
-      bind(WaveIndexer.class).to(LuceneWaveIndexerImpl.class).in(Singleton.class);
+      // bind(PerUserWaveViewProvider.class).to(SolrPerUserWaveViewHandlerImpl.class).in(
+      // Singleton.class);
+      // bind(PerUserWaveViewBus.Listener.class).to(SolrPerUserWaveViewHandlerImpl.class).in(
+      // Singleton.class);
+      // bind(PerUserWaveViewHandler.class).to(SolrPerUserWaveViewHandlerImpl.class).in(
+      // Singleton.class);
+      /*-
+       * required by org.waveprotocol.box.server.ServerMain.initializeSearch(Injector, WaveBus)
+       */
+      bind(PerUserWaveViewBus.Listener.class).to(SolrWaveIndexerImpl.class).in(Singleton.class);
+      bind(WaveIndexer.class).to(SolrWaveIndexerImpl.class).in(Singleton.class);
     } else if ("memory".equals(searchType)) {
       bind(SearchProvider.class).to(SimpleSearchProviderImpl.class).in(Singleton.class);
       bind(PerUserWaveViewProvider.class).to(MemoryPerUserWaveViewHandlerImpl.class).in(

@@ -20,7 +20,6 @@
 package org.waveprotocol.box.server.waveserver;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.Multimap;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListenableFutureTask;
 import com.google.gson.JsonArray;
@@ -33,19 +32,15 @@ import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.commons.httpclient.methods.RequestEntity;
 import org.apache.commons.httpclient.methods.StringRequestEntity;
-import org.apache.commons.lang.NotImplementedException;
 import org.apache.http.HttpStatus;
 import org.waveprotocol.box.common.DeltaSequence;
 import org.waveprotocol.box.common.DocumentConstants;
-import org.waveprotocol.box.server.waveserver.WaveBus.Subscriber;
 import org.waveprotocol.wave.model.document.operation.AnnotationBoundaryMap;
 import org.waveprotocol.wave.model.document.operation.Attributes;
 import org.waveprotocol.wave.model.document.operation.AttributesUpdate;
 import org.waveprotocol.wave.model.document.operation.DocOp;
 import org.waveprotocol.wave.model.document.operation.DocOpCursor;
 import org.waveprotocol.wave.model.document.operation.impl.InitializationCursorAdapter;
-import org.waveprotocol.wave.model.id.WaveId;
-import org.waveprotocol.wave.model.id.WaveletId;
 import org.waveprotocol.wave.model.id.WaveletName;
 import org.waveprotocol.wave.model.version.HashedVersion;
 import org.waveprotocol.wave.model.wave.ParticipantId;
@@ -60,20 +55,19 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Solr based implementation of {@link PerUserWaveViewHandler}.
- * 
  * @author Frank R. <renfeng.cn@gmail.com>
  */
 @Singleton
-public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, Subscriber {
+public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.Subscriber,
+    PerUserWaveViewBus.Listener {
 
-  private static final Logger LOG = Logger
-      .getLogger(SolrPerUserWaveViewHandlerImpl.class.getName());
+  private static final Logger LOG = Logger.getLogger(SolrWaveIndexerImpl.class.getName());
 
   // TODO (Yuri Z.): Inject executor.
   private static final Executor executor = Executors.newSingleThreadExecutor();
 
-  private final ReadableWaveletDataProvider waveletProvider;
+  // private final PerUserWaveViewBus.Listener listener;
+  private final ReadableWaveletDataProvider waveletDataProvider;
 
   /**
    * Concatenates all of the text of the specified docops into a single String.
@@ -136,9 +130,11 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
   }
 
   @Inject
-  public SolrPerUserWaveViewHandlerImpl(ReadableWaveletDataProvider waveletProvider,
+  public SolrWaveIndexerImpl(WaveMap waveMap, WaveletProvider waveletProvider,
+      ReadableWaveletDataProvider waveletDataProvider,
       WaveletNotificationDispatcher notificationDispatcher) {
-    this.waveletProvider = waveletProvider;
+    super(waveMap, waveletProvider);
+    this.waveletDataProvider = waveletDataProvider;
     notificationDispatcher.subscribe(this);
   }
 
@@ -146,52 +142,66 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
   public ListenableFuture<Void> onParticipantAdded(final WaveletName waveletName,
       ParticipantId participant) {
 
-    Preconditions.checkNotNull(waveletName);
-    Preconditions.checkNotNull(participant);
-
-    ListenableFutureTask<Void> task = new ListenableFutureTask<Void>(new Callable<Void>() {
-
-      @Override
-      public Void call() throws Exception {
-        ReadableWaveletData waveletData;
-        try {
-          waveletData = waveletProvider.getReadableWaveletData(waveletName);
-          updateIndex(waveletData);
-        } catch (WaveServerException e) {
-          LOG.log(Level.SEVERE, "Failed to update index for " + waveletName, e);
-          throw e;
-        }
-        return null;
-      }
-    });
-    executor.execute(task);
-    return task;
+    // Preconditions.checkNotNull(waveletName);
+    // Preconditions.checkNotNull(participant);
+    //
+    // ListenableFutureTask<Void> task = new ListenableFutureTask<Void>(new
+    // Callable<Void>() {
+    //
+    // @Override
+    // public Void call() throws Exception {
+    // ReadableWaveletData waveletData;
+    // try {
+    // waveletData = waveletDataProvider.getReadableWaveletData(waveletName);
+    // updateIndex(waveletData);
+    // } catch (WaveServerException e) {
+    // LOG.log(Level.SEVERE, "Failed to update index for " + waveletName, e);
+    // throw e;
+    // }
+    // return null;
+    // }
+    // });
+    // executor.execute(task);
+    // return task;
+    /*
+     * XXX ignored
+     */
+    // throw new
+    // NotImplementedException("See waveletCommitted(WaveletName, HashedVersion)");
+    return null;
   }
 
   @Override
   public ListenableFuture<Void> onParticipantRemoved(final WaveletName waveletName,
       ParticipantId participant) {
 
-    Preconditions.checkNotNull(waveletName);
-    Preconditions.checkNotNull(participant);
-
-    ListenableFutureTask<Void> task = new ListenableFutureTask<Void>(new Callable<Void>() {
-
-      @Override
-      public Void call() throws Exception {
-        ReadableWaveletData waveletData;
-        try {
-          waveletData = waveletProvider.getReadableWaveletData(waveletName);
-          updateIndex(waveletData);
-        } catch (WaveServerException e) {
-          LOG.log(Level.SEVERE, "Failed to update index for " + waveletName, e);
-          throw e;
-        }
-        return null;
-      }
-    });
-    executor.execute(task);
-    return task;
+    // Preconditions.checkNotNull(waveletName);
+    // Preconditions.checkNotNull(participant);
+    //
+    // ListenableFutureTask<Void> task = new ListenableFutureTask<Void>(new
+    // Callable<Void>() {
+    //
+    // @Override
+    // public Void call() throws Exception {
+    // ReadableWaveletData waveletData;
+    // try {
+    // waveletData = waveletDataProvider.getReadableWaveletData(waveletName);
+    // updateIndex(waveletData);
+    // } catch (WaveServerException e) {
+    // LOG.log(Level.SEVERE, "Failed to update index for " + waveletName, e);
+    // throw e;
+    // }
+    // return null;
+    // }
+    // });
+    // executor.execute(task);
+    // return task;
+    /*
+     * XXX ignored
+     */
+    // throw new
+    // NotImplementedException("See waveletCommitted(WaveletName, HashedVersion)");
+    return null;
   }
 
   @Override
@@ -203,7 +213,7 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
       public Void call() throws Exception {
         ReadableWaveletData waveletData;
         try {
-          waveletData = waveletProvider.getReadableWaveletData(waveletName);
+          waveletData = waveletDataProvider.getReadableWaveletData(waveletName);
           updateIndex(waveletData);
         } catch (WaveServerException e) {
           LOG.log(Level.SEVERE, "Failed to initialize index for " + waveletName, e);
@@ -214,6 +224,20 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
     });
     executor.execute(task);
     return task;
+  }
+
+  @Override
+  protected void processWavelet(WaveletName waveletName) {
+    onWaveInit(waveletName);
+  }
+
+  @Override
+  protected void postIndexHook() {
+    try {
+      getWaveMap().unloadAllWavelets();
+    } catch (WaveletStateException e) {
+      throw new IndexException("Problem encountered while cleaning up", e);
+    }
   }
 
   private void updateIndex(ReadableWaveletData wavelet) throws IndexException {
@@ -290,15 +314,9 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
   }
 
   @Override
-  public Multimap<WaveId, WaveletId> retrievePerUserWaveView(ParticipantId user) {
-    throw new NotImplementedException(
-        "See org.waveprotocol.box.server.waveserver.SolrSearchProviderImpl.search(ParticipantId, String, int, int)");
-  }
-
-  @Override
   public void waveletUpdate(final ReadableWaveletData wavelet, DeltaSequence deltas) {
-    /*
-     * for optimization, see waveletCommitted(WaveletName, HashedVersion)
+    /*-
+     * commented out for optimization, see waveletCommitted(WaveletName, HashedVersion)
      */
     // updateIndex(wavelet);
   }
@@ -317,7 +335,7 @@ public class SolrPerUserWaveViewHandlerImpl implements PerUserWaveViewHandler, S
       public Void call() throws Exception {
         ReadableWaveletData waveletData;
         try {
-          waveletData = waveletProvider.getReadableWaveletData(waveletName);
+          waveletData = waveletDataProvider.getReadableWaveletData(waveletName);
           System.out.println("commit " + version + " " + waveletData.getVersion());
           if (waveletData.getVersion() == version.getVersion()) {
             updateIndex(waveletData);
