@@ -141,66 +141,18 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
   @Override
   public ListenableFuture<Void> onParticipantAdded(final WaveletName waveletName,
       ParticipantId participant) {
-
-    // Preconditions.checkNotNull(waveletName);
-    // Preconditions.checkNotNull(participant);
-    //
-    // ListenableFutureTask<Void> task = new ListenableFutureTask<Void>(new
-    // Callable<Void>() {
-    //
-    // @Override
-    // public Void call() throws Exception {
-    // ReadableWaveletData waveletData;
-    // try {
-    // waveletData = waveletDataProvider.getReadableWaveletData(waveletName);
-    // updateIndex(waveletData);
-    // } catch (WaveServerException e) {
-    // LOG.log(Level.SEVERE, "Failed to update index for " + waveletName, e);
-    // throw e;
-    // }
-    // return null;
-    // }
-    // });
-    // executor.execute(task);
-    // return task;
     /*
-     * XXX ignored
+     * XXX ignored. See waveletCommitted(WaveletName, HashedVersion)
      */
-    // throw new
-    // NotImplementedException("See waveletCommitted(WaveletName, HashedVersion)");
     return null;
   }
 
   @Override
   public ListenableFuture<Void> onParticipantRemoved(final WaveletName waveletName,
       ParticipantId participant) {
-
-    // Preconditions.checkNotNull(waveletName);
-    // Preconditions.checkNotNull(participant);
-    //
-    // ListenableFutureTask<Void> task = new ListenableFutureTask<Void>(new
-    // Callable<Void>() {
-    //
-    // @Override
-    // public Void call() throws Exception {
-    // ReadableWaveletData waveletData;
-    // try {
-    // waveletData = waveletDataProvider.getReadableWaveletData(waveletName);
-    // updateIndex(waveletData);
-    // } catch (WaveServerException e) {
-    // LOG.log(Level.SEVERE, "Failed to update index for " + waveletName, e);
-    // throw e;
-    // }
-    // return null;
-    // }
-    // });
-    // executor.execute(task);
-    // return task;
     /*
-     * XXX ignored
+     * XXX ignored. See waveletCommitted(WaveletName, HashedVersion)
      */
-    // throw new
-    // NotImplementedException("See waveletCommitted(WaveletName, HashedVersion)");
     return null;
   }
 

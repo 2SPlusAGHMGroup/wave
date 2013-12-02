@@ -74,12 +74,6 @@ public class SearchModule extends AbstractModule {
       }
     } else if ("solr".equals(searchType)) {
       bind(SearchProvider.class).to(SolrSearchProviderImpl.class).in(Singleton.class);
-      // bind(PerUserWaveViewProvider.class).to(SolrPerUserWaveViewHandlerImpl.class).in(
-      // Singleton.class);
-      // bind(PerUserWaveViewBus.Listener.class).to(SolrPerUserWaveViewHandlerImpl.class).in(
-      // Singleton.class);
-      // bind(PerUserWaveViewHandler.class).to(SolrPerUserWaveViewHandlerImpl.class).in(
-      // Singleton.class);
       /*-
        * required by org.waveprotocol.box.server.ServerMain.initializeSearch(Injector, WaveBus)
        */
