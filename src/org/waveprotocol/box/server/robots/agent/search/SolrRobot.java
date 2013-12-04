@@ -8,6 +8,7 @@ import com.google.gson.JsonParser;
 import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.google.inject.Singleton;
+import com.google.inject.name.Named;
 import com.google.wave.api.Annotation;
 import com.google.wave.api.Annotations;
 import com.google.wave.api.Blip;
@@ -35,8 +36,11 @@ import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.URI;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.http.HttpStatus;
+import org.waveprotocol.box.server.CoreSettings;
 import org.waveprotocol.box.server.robots.agent.AbstractBaseRobotAgent;
 import org.waveprotocol.box.server.waveserver.SolrSearchProviderImpl;
+import org.waveprotocol.wave.model.wave.ParticipantId;
+import org.waveprotocol.wave.model.wave.ParticipantIdUtil;
 import org.waveprotocol.wave.util.logging.Log;
 
 import java.io.IOException;
@@ -69,14 +73,12 @@ public class SolrRobot extends AbstractBaseRobotAgent {
 
   public static final String ROBOT_URI = AGENT_PREFIX_URI + "/search/solr";
 
-  // private final PerUserWaveViewProvider waveViewProvider;
-  // private final WaveMap waveMap;
+  private final ParticipantId sharedDomainParticipantId;
 
   @Inject
-  public SolrRobot(Injector injector) {
+  public SolrRobot(Injector injector, @Named(CoreSettings.WAVE_SERVER_DOMAIN) String waveDomain) {
     super(injector);
-    // this.waveViewProvider = userWaveViewProvider;
-    // this.waveMap = waveMap;
+    sharedDomainParticipantId = ParticipantIdUtil.makeUnsafeSharedDomainParticipantId(waveDomain);
   }
 
   @Override
@@ -271,12 +273,16 @@ public class SolrRobot extends AbstractBaseRobotAgent {
 
   private void search(String query, String creator, Blip outputBlip) {
 
-    if (query.length() <= 0) {
-      /*
-       * ignore empty query
-       */
-      return;
-    }
+    // if (query.length() <= 0) {
+    // /*
+    // * ignore empty query
+    // */
+    // return;
+    // }
+
+    // Maybe should be changed in case other folders in addition to 'inbox' are
+    // added.
+    final boolean isAllQuery = !SolrSearchProviderImpl.IN_PATTERN.matcher(query).find();
 
     String outputWaveId = outputBlip.getWaveId().serialise();
 
@@ -286,11 +292,21 @@ public class SolrRobot extends AbstractBaseRobotAgent {
     /*
      * XXX will it be better to replace lucene with edismax?
      */
-    String userQuery = SolrSearchProviderImpl.buildUserQuery(query);
-    String fq = SolrSearchProviderImpl.FILTER_QUERY_PREFIX + creator + " AND (" + userQuery + ")";
+    String fq;
+    if (isAllQuery) {
+      fq =
+          SolrSearchProviderImpl.FILTER_QUERY_PREFIX + "(" + creator + " OR "
+              + sharedDomainParticipantId + ")";
+    } else {
+      fq = SolrSearchProviderImpl.FILTER_QUERY_PREFIX + creator;
+    }
+
+    if (query.length() > 0) {
+      fq += " AND (" + SolrSearchProviderImpl.buildUserQuery(query) + ")";
+    }
 
     int start = 0;
-    int rows = 10;
+    int rows = SolrSearchProviderImpl.ROWS;
     int count = 0;
 
     GetMethod getMethod = new GetMethod();
@@ -300,7 +316,8 @@ public class SolrRobot extends AbstractBaseRobotAgent {
          * http://wiki.apache.org/solr/HighlightingParameters
          */
         getMethod.setURI(new URI(SolrSearchProviderImpl.SOLR_BASE_URL + "/select?wt=json"
-            + "&hl=true&hl.fl=text_t&hl.q=" + userQuery + "&start=" + start + "&rows=" + rows
+            + "&hl=true&hl.fl=" + SolrSearchProviderImpl.TEXT + "&hl.q="
+            + SolrSearchProviderImpl.buildUserQuery(query) + "&start=" + start + "&rows=" + rows
             + "&q=" + SolrSearchProviderImpl.Q + "&fq=" + fq, false));
 
         HttpClient httpClient = new HttpClient();
@@ -337,10 +354,17 @@ public class SolrRobot extends AbstractBaseRobotAgent {
             continue;
           }
 
+          /*
+           * TODO
+           * org.waveprotocol.box.server.waveserver.SimpleSearchProviderImpl
+           * .isWaveletMatchesCriteria(ReadableWaveletData, ParticipantId,
+           * ParticipantId, List<ParticipantId>, List<ParticipantId>, boolean)
+           */
+
           count++;
 
           JsonObject snippetJson = highlighting.getAsJsonObject(id);
-          JsonArray textsJson = snippetJson.getAsJsonArray("text_t");
+          JsonArray textsJson = snippetJson.getAsJsonArray(SolrSearchProviderImpl.TEXT);
           Iterator<JsonElement> textJsonIterator = textsJson.iterator();
           while (textJsonIterator.hasNext()) {
             JsonElement textJson = textJsonIterator.next();
