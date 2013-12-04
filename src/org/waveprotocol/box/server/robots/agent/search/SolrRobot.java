@@ -157,6 +157,10 @@ public class SolrRobot extends AbstractBaseRobotAgent {
         Range range = a.getRange();
         int start = range.getStart();
         String message = content.substring(0, start);
+        /*
+         * removed "start == range.getEnd()" to allow query at any line (even if
+         * it's not the last line)
+         */
         if (message.endsWith("\n") && start == range.getEnd()) {
           Blip outputBlip = blip.insertInlineBlip(start - 1);
 
@@ -185,10 +189,14 @@ public class SolrRobot extends AbstractBaseRobotAgent {
             search(message, creator, outputBlip);
           } else {
             String robotMessage =
-                "This wave wasn't created by you. To execute solr commands, invite me, solr-bot, to a wave created by you.";
+                "Search is allowed only when the creator of the wave is currently a participant.";
             outputBlip.append(robotMessage);
           }
 
+          /*
+           * XXX if only the last line is accepted, we can quit the loop
+           */
+          // break;
         }
       }
     }
@@ -629,40 +637,4 @@ public class SolrRobot extends AbstractBaseRobotAgent {
   // }
   // return resultBuilder.toString().trim();
   // }
-
-  // @Override
-  public String getShortDescription() {
-    return "short desc";
-  }
-
-  // @Override
-  public String getFullDescription() {
-    return "full desc";
-  }
-
-  // @Override
-  public String getCommandName() {
-    return "solr";
-  }
-
-  // @Override
-  public String getCmdLineSyntax() {
-    return "update|search";
-  }
-
-  // @Override
-  public String getExample() {
-    return "example";
-  }
-
-  // @Override
-  public int getMinNumOfArguments() {
-    return 0;
-  }
-
-  // @Override
-  public int getMaxNumOfArguments() {
-    return Integer.MAX_VALUE;
-  }
-
 }
