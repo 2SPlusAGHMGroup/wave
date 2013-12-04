@@ -47,6 +47,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.Collection;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Search provider that offers full text search
@@ -57,6 +58,22 @@ public class SolrSearchProviderImpl implements SearchProvider {
 
   private static final Log LOG = Log.get(SolrSearchProviderImpl.class);
 
+  private static final String WORD_START = "(\\b|^)";
+  public static final Pattern IN_PATTERN = Pattern.compile("\\bin:\\S*");
+
+  public static final int ROWS = 10;
+
+  public static final String ID = "id";
+  public static final String WAVE_ID = "waveId_s";
+  public static final String WAVELET_ID = "waveletId_s";
+  public static final String DOC_NAME = "docName_s";
+  public static final String LMT = "lmt_l";
+  public static final String WITH = "with_ss";
+  public static final String WITH_FUZZY = "with_txt";
+  public static final String CREATOR = "creator_t";
+  public static final String TEXT = "text_t";
+  public static final String IN = "in_ss";
+
   /*
    * TODO make it configurable
    */
@@ -65,13 +82,14 @@ public class SolrSearchProviderImpl implements SearchProvider {
   /*-
    * http://wiki.apache.org/solr/CommonQueryParameters#q
    */
-  public static final String Q = "waveId_s:[* TO *]" //
-      + " AND waveletId_s:[* TO *]" //
-      + " AND docName_s:[* TO *]" //
-      + " AND lmt_l:[* TO *]" //
-      + " AND with_txt:[* TO *]" //
-      + " AND text_t:[* TO *]" //
-      + " AND in_ss:[* TO *]";
+  public static final String Q = WAVE_ID + ":[* TO *]" //
+      + " AND " + WAVELET_ID + ":[* TO *]" //
+      + " AND " + DOC_NAME + ":[* TO *]" //
+      + " AND " + LMT + ":[* TO *]" //
+      + " AND " + WITH + ":[* TO *]" //
+      + " AND " + WITH_FUZZY + ":[* TO *]" //
+      + " AND " + CREATOR + ":[* TO *]" //
+      + " AND " + TEXT + ":[* TO *]";
 
   /*-
    * XXX will it be better to replace lucene with edismax?
@@ -87,32 +105,25 @@ public class SolrSearchProviderImpl implements SearchProvider {
    * https://issues.apache.org/jira/browse/SOLR-3740
    * 
    */
-  public static final String FILTER_QUERY_PREFIX = "{!lucene q.op=AND df=text_t}with_txt:";
+  public static final String FILTER_QUERY_PREFIX = "{!lucene q.op=AND df=" + TEXT + "}" //
+      + WITH + ":";
 
   private final WaveDigester digester;
   private final WaveMap waveMap;
 
-  /*
-   * TODO find out what to do with it
-   */
-  @SuppressWarnings("unused")
   private final ParticipantId sharedDomainParticipantId;
 
-  /*
-   * XXX remove this since
-   */
-  // private final PerUserWaveViewProvider waveViewProvider;
-
   public static String buildUserQuery(String query) {
-    return query.replaceAll("\\bin:", "in_ss:").replaceAll("\\bwith:", "with_txt:");
+    return query.replaceAll(WORD_START + TokenQueryType.IN.getToken() + ":", IN + ":")
+        .replaceAll(WORD_START + TokenQueryType.WITH.getToken() + ":", WITH_FUZZY + ":")
+        .replaceAll(WORD_START + TokenQueryType.CREATOR.getToken() + ":", CREATOR + ":");
   }
 
   @Inject
-  public SolrSearchProviderImpl(@Named(CoreSettings.WAVE_SERVER_DOMAIN) final String waveDomain,
-      WaveDigester digester, final WaveMap waveMap) {
+  public SolrSearchProviderImpl(WaveDigester digester, WaveMap waveMap,
+      @Named(CoreSettings.WAVE_SERVER_DOMAIN) String waveDomain) {
     this.digester = digester;
     this.waveMap = waveMap;
-    // this.waveViewProvider = userWaveViewProvider;
     sharedDomainParticipantId = ParticipantIdUtil.makeUnsafeSharedDomainParticipantId(waveDomain);
   }
 
@@ -121,17 +132,28 @@ public class SolrSearchProviderImpl implements SearchProvider {
     LOG.fine("Search query '" + query + "' from user: " + user + " [" + startAt + ", "
         + (startAt + numResults - 1) + "]");
 
+    // Maybe should be changed in case other folders in addition to 'inbox' are
+    // added.
+    final boolean isAllQuery = !IN_PATTERN.matcher(query).find();
+
     Multimap<WaveId, WaveletId> currentUserWavesView = HashMultimap.create();
 
     if (numResults > 0) {
 
-      String fq = FILTER_QUERY_PREFIX + user.getAddress();
+      String fq;
+      if (isAllQuery) {
+        fq =
+            FILTER_QUERY_PREFIX + "(" + user.getAddress() + " OR " + sharedDomainParticipantId
+                + ")";
+      } else {
+        fq = FILTER_QUERY_PREFIX + user.getAddress();
+      }
       if (query.length() > 0) {
         fq += " AND (" + buildUserQuery(query) + ")";
       }
 
       int start = startAt;
-      int rows = Math.max(numResults, 10);
+      int rows = Math.max(numResults, ROWS);
 
       GetMethod getMethod = new GetMethod();
       try {
@@ -157,10 +179,15 @@ public class SolrSearchProviderImpl implements SearchProvider {
 
           for (int i = 0; i < docsJson.size(); i++) {
             JsonObject docJson = docsJson.get(i).getAsJsonObject();
-            WaveId waveId =
-                WaveId.deserialise(docJson.getAsJsonPrimitive("waveId_s").getAsString());
+            WaveId waveId = WaveId.deserialise(docJson.getAsJsonPrimitive(WAVE_ID).getAsString());
             WaveletId waveletId =
-                WaveletId.deserialise(docJson.getAsJsonPrimitive("waveletId_s").getAsString());
+                WaveletId.deserialise(docJson.getAsJsonPrimitive(WAVELET_ID).getAsString());
+            /*
+             * TODO
+             * org.waveprotocol.box.server.waveserver.SimpleSearchProviderImpl
+             * .isWaveletMatchesCriteria(ReadableWaveletData, ParticipantId,
+             * ParticipantId, List<ParticipantId>, List<ParticipantId>, boolean)
+             */
             currentUserWavesView.put(waveId, waveletId);
             if (currentUserWavesView.size() >= numResults) {
               break;

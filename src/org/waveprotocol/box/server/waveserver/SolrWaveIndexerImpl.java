@@ -209,6 +209,7 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
       String waveId = wavelet.getWaveId().serialise();
       String waveletId = wavelet.getWaveletId().serialise();
       String modified = Long.toString(wavelet.getLastModifiedTime());
+      String creator = wavelet.getCreator().getAddress();
 
       for (String docName : wavelet.getDocumentIds()) {
         ReadableBlipData document = wavelet.getDocument(docName);
@@ -232,14 +233,16 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
         }
 
         JsonObject docJson = new JsonObject();
-        docJson.addProperty("id", waveId + "/~/conv+root/" + docName);
-        docJson.addProperty("waveId_s", waveId);
-        docJson.addProperty("waveletId_s", waveletId);
-        docJson.addProperty("docName_s", docName);
-        docJson.addProperty("lmt_l", modified);
-        docJson.add("with_txt", participantsJson);
-        docJson.addProperty("text_t", text);
-        docJson.addProperty("in_ss", "inbox");
+        docJson.addProperty(SolrSearchProviderImpl.ID, waveId + "/~/conv+root/" + docName);
+        docJson.addProperty(SolrSearchProviderImpl.WAVE_ID, waveId);
+        docJson.addProperty(SolrSearchProviderImpl.WAVELET_ID, waveletId);
+        docJson.addProperty(SolrSearchProviderImpl.DOC_NAME, docName);
+        docJson.addProperty(SolrSearchProviderImpl.LMT, modified);
+        docJson.add(SolrSearchProviderImpl.WITH, participantsJson);
+        docJson.add(SolrSearchProviderImpl.WITH_FUZZY, participantsJson);
+        docJson.addProperty(SolrSearchProviderImpl.CREATOR, creator);
+        docJson.addProperty(SolrSearchProviderImpl.TEXT, text);
+        docJson.addProperty(SolrSearchProviderImpl.IN, "inbox");
 
         docsJson.add(docJson);
       }
