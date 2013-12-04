@@ -171,7 +171,7 @@ clientauth_cert_domain = @CLIENTAUTH_CERT_DOMAIN@
 # Disable login page to force x509-only authentication
 disable_loginpage = @DISABLE_LOGINPAGE@
 
-# Currently supported search types: memory, lucene.
+# Currently supported search types: memory, lucene, solr.
 # Default value: lucene.
 search_type = @SEARCH_TYPE@
 
