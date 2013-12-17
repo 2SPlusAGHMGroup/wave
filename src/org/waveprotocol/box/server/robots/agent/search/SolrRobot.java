@@ -1,6 +1,7 @@
 package org.waveprotocol.box.server.robots.agent.search;
 
 
+import com.google.common.util.concurrent.ListenableFutureTask;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -31,6 +32,7 @@ import com.google.wave.api.event.WaveletSelfAddedEvent;
 import com.google.wave.api.event.WaveletSelfRemovedEvent;
 import com.google.wave.api.event.WaveletTagsChangedEvent;
 import com.google.wave.api.event.WaveletTitleChangedEvent;
+import com.google.wave.api.impl.DocumentModifyAction.BundledAnnotation;
 
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.URI;
@@ -49,6 +51,9 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 /**
  * Robot that offers full text search
@@ -59,6 +64,13 @@ import java.util.List;
 @Singleton
 public class SolrRobot extends AbstractBaseRobotAgent {
 
+  // private static final Logger LOG =
+  // Logger.getLogger(SolrRobot.class.getName());
+  private static final Log LOG = Log.get(SolrRobot.class);
+
+  // TODO (Yuri Z.): Inject executor.
+  private static final Executor executor = Executors.newSingleThreadExecutor();
+
   /*-
    * http://wiki.apache.org/solr/HighlightingParameters#hl.simple.pre.2Fhl.simple.post
    */
@@ -66,10 +78,6 @@ public class SolrRobot extends AbstractBaseRobotAgent {
   private static final String POST_TAG = "</em>";
   private static final int PRE_TAG_LENGTH = PRE_TAG.length();
   private static final int POST_TAG_LENGTH = POST_TAG.length();
-
-  // private static final Logger LOG =
-  // Logger.getLogger(SolrRobot.class.getName());
-  private static final Log LOG = Log.get(SolrRobot.class);
 
   public static final String ROBOT_URI = AGENT_PREFIX_URI + "/search/solr";
 
@@ -188,6 +196,10 @@ public class SolrRobot extends AbstractBaseRobotAgent {
            */
           String creator = wavelet.getCreator();
           if (wavelet.getParticipants().contains(creator)) {
+            /*
+             * TODO async output of search results
+             */
+            // searchAsync(message, creator, outputBlip);
             search(message, creator, outputBlip);
           } else {
             String robotMessage =
@@ -202,6 +214,21 @@ public class SolrRobot extends AbstractBaseRobotAgent {
         }
       }
     }
+
+    return;
+  }
+
+  private void searchAsync(final String query, final String creator, final Blip outputBlip) {
+
+    ListenableFutureTask<Void> task = new ListenableFutureTask<Void>(new Callable<Void>() {
+
+      @Override
+      public Void call() throws Exception {
+        search(query, creator, outputBlip);
+        return null;
+      }
+    });
+    executor.execute(task);
 
     return;
   }
@@ -372,47 +399,66 @@ public class SolrRobot extends AbstractBaseRobotAgent {
             // String result =
             // "<p><a href='/#" + id + "'>wave://" + id + "</a><br/>" + snippet
             // + "</p>";
-            outputBlip.append("\n" + count + " ");
+            // outputBlip.append("\n" + count + " ");
+            appendNormal(outputBlip, "\n" + count + " ");
 
-            int linkStartIndex = outputBlip.getContent().length();
-            outputBlip.append("wave://" + id);
-            int linkEndIndex = outputBlip.getContent().length();
-            outputBlip.append("\n");
-            BlipContentRefs.range(outputBlip, linkStartIndex, linkEndIndex).annotate("link/wave",
-                id);
+            // int linkStartIndex = outputBlip.getContent().length();
+            // outputBlip.append("wave://" + id);
+            // int linkEndIndex = outputBlip.getContent().length();
+            // outputBlip.append("\n");
+            // BlipContentRefs.range(outputBlip, linkStartIndex,
+            // linkEndIndex).annotate("link/wave",
+            // id);
+
+            BlipContentRefs.all(outputBlip).insertAfter(BundledAnnotation.listOf("link/wave", id),
+                "wave://" + id);
+            appendNormal(outputBlip, "\n");
 
             int lastTag = -1;
-            int highlightStartIndex = -1;
-            int highlightEndIndex = -1;
+            // int highlightStartIndex = -1;
+            // int highlightEndIndex = -1;
             while (true) {
               int preTag = snippet.indexOf(PRE_TAG, lastTag);
               if (preTag != -1) {
                 int postTag = snippet.indexOf(POST_TAG, preTag + PRE_TAG_LENGTH);
                 if (lastTag != -1) {
-                  outputBlip.append(snippet.substring(lastTag, preTag));
-                  BlipContentRefs.range(outputBlip, highlightStartIndex, highlightEndIndex)
-                      .annotate("style/backgroundColor", "rgb(255,255,0)");
+                  appendNormal(outputBlip, snippet.substring(lastTag, preTag));
+                  // BlipContentRefs.all(outputBlip).insertAfter(snippet.substring(lastTag,
+                  // preTag));
+                  // BlipContentRefs.range(outputBlip, highlightStartIndex,
+                  // highlightEndIndex)
+                  // .annotate("style/backgroundColor", "rgb(255,255,0)");
                 } else {
-                  outputBlip.append(snippet.substring(0, preTag));
+                  appendNormal(outputBlip, snippet.substring(0, preTag));
                 }
-                highlightStartIndex = outputBlip.getContent().length();
-                outputBlip.append(snippet.substring(preTag + PRE_TAG_LENGTH, postTag));
-                highlightEndIndex = outputBlip.getContent().length();
+                // highlightStartIndex = outputBlip.getContent().length();
+                // outputBlip.at(outputBlip.length()).annotate("style/backgroundColor",
+                // "rgb(255,255,0)");
+                // outputBlip.append(snippet.substring(preTag + PRE_TAG_LENGTH,
+                // postTag));
+                BlipContentRefs.all(outputBlip).insertAfter(
+                    BundledAnnotation.listOf("style/backgroundColor", "rgb(255,255,0)"),
+                    snippet.substring(preTag + PRE_TAG_LENGTH, postTag));
+                // highlightEndIndex = outputBlip.getContent().length();
+                // outputBlip.at(outputBlip.length()).clearAnnotation("style/backgroundColor");
                 lastTag = postTag + POST_TAG_LENGTH;
               } else {
                 if (lastTag != -1) {
-                  outputBlip.append(snippet.substring(lastTag));
-                  BlipContentRefs.range(outputBlip, highlightStartIndex, highlightEndIndex)
-                      .annotate("style/backgroundColor", "rgb(255,255,0)");
+                  // BlipContentRefs.range(outputBlip, highlightStartIndex,
+                  // highlightEndIndex)
+                  // .annotate("style/backgroundColor", "rgb(255,255,0)");
+
+                  appendNormal(outputBlip, snippet.substring(lastTag));
                 } else {
-                  outputBlip.append(snippet);
+                  appendNormal(outputBlip, snippet);
                 }
                 break;
               }
 
             }
 
-            outputBlip.append("\n");
+            // outputBlip.append("\n");
+            appendNormal(outputBlip, "\n");
 
           }
         }
@@ -424,9 +470,17 @@ public class SolrRobot extends AbstractBaseRobotAgent {
         start += rows;
       }
 
+      /*
+       * XXX don't print numFound because it includes results in current wave.
+       */
       BlipContentRefs.range(outputBlip, 0, 1).insert("Found: " + count);
 
     } catch (IOException e) {
+      LOG.warning("Failed to execute query: " + query);
+      // return "Failed to execute query: " + query;
+      outputBlip.append("Failed to execute query: " + query);
+      return;
+    } catch (Exception e) {
       LOG.warning("Failed to execute query: " + query);
       // return "Failed to execute query: " + query;
       outputBlip.append("Failed to execute query: " + query);
@@ -436,6 +490,19 @@ public class SolrRobot extends AbstractBaseRobotAgent {
     }
 
     // return messageBuilder.toString();
+    return;
+  }
+
+  private void appendNormal(Blip outputBlip, String normalText) {
+
+    if (normalText.length() > 0) {
+      int startIndex = outputBlip.length();
+      outputBlip.append(normalText);
+      int endIndex = outputBlip.length();
+      BlipContentRefs.range(outputBlip, startIndex, endIndex)
+          .clearAnnotation("style/backgroundColor").clearAnnotation("link/wave");
+    }
+
     return;
   }
 
