@@ -57,10 +57,10 @@ public class SimpleSearchProviderImpl implements SearchProvider {
 
   private static final Log LOG = Log.get(SimpleSearchProviderImpl.class);
 
-  private final WaveDigester digester;
+  protected final WaveDigester digester;
   private final WaveMap waveMap;
 
-  private final ParticipantId sharedDomainParticipantId;
+  protected final ParticipantId sharedDomainParticipantId;
 
   private final PerUserWaveViewProvider waveViewProvider;
 
@@ -168,7 +168,7 @@ public class SimpleSearchProviderImpl implements SearchProvider {
     return matchesFunction;
   }
 
-  private Map<WaveId, WaveViewData> filterWavesViewBySearchCriteria(
+  protected Map<WaveId, WaveViewData> filterWavesViewBySearchCriteria(
       Function<ReadableWaveletData, Boolean> matchesFunction,
       Multimap<WaveId, WaveletId> currentUserWavesView) {
     // Must use a map with stable ordering, since indices are meaningful.

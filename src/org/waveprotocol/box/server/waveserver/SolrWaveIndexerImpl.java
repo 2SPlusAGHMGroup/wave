@@ -29,6 +29,8 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 
 import org.apache.commons.httpclient.HttpClient;
+import org.apache.commons.httpclient.URI;
+import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.commons.httpclient.methods.RequestEntity;
 import org.apache.commons.httpclient.methods.StringRequestEntity;
@@ -46,13 +48,13 @@ import org.waveprotocol.wave.model.version.HashedVersion;
 import org.waveprotocol.wave.model.wave.ParticipantId;
 import org.waveprotocol.wave.model.wave.data.ReadableBlipData;
 import org.waveprotocol.wave.model.wave.data.ReadableWaveletData;
+import org.waveprotocol.wave.util.logging.Log;
 
 import java.io.IOException;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * @author Frank R. <renfeng.cn@gmail.com>
@@ -61,17 +63,22 @@ import java.util.logging.Logger;
 public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.Subscriber,
     PerUserWaveViewBus.Listener {
 
-  private static final Logger LOG = Logger.getLogger(SolrWaveIndexerImpl.class.getName());
+  private static final Log LOG = Log.get(SolrWaveIndexerImpl.class);
 
   // TODO (Yuri Z.): Inject executor.
   private static final Executor executor = Executors.newSingleThreadExecutor();
 
-  // private final PerUserWaveViewBus.Listener listener;
   private final ReadableWaveletDataProvider waveletDataProvider;
 
+  /*-
+   * copied with modification from 
+   * org.waveprotocol.box.common.Snippets.collateTextForOps(Iterable<DocOp>)
+   *
+   * replaced white space character with new line
+   */
   /**
    * Concatenates all of the text of the specified docops into a single String.
-   * 
+   *
    * @param documentops the document operations to concatenate.
    * @return A String containing the characters from the operations.
    */
@@ -142,7 +149,7 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
   public ListenableFuture<Void> onParticipantAdded(final WaveletName waveletName,
       ParticipantId participant) {
     /*
-     * XXX ignored. See waveletCommitted(WaveletName, HashedVersion)
+     * ignored. See waveletCommitted(WaveletName, HashedVersion)
      */
     return null;
   }
@@ -151,7 +158,7 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
   public ListenableFuture<Void> onParticipantRemoved(final WaveletName waveletName,
       ParticipantId participant) {
     /*
-     * XXX ignored. See waveletCommitted(WaveletName, HashedVersion)
+     * ignored. See waveletCommitted(WaveletName, HashedVersion)
      */
     return null;
   }
@@ -202,7 +209,6 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
 
     PostMethod postMethod =
         new PostMethod(SolrSearchProviderImpl.SOLR_BASE_URL + "/update/json?commit=true");
-    // postMethod.setRequestHeader("Content-Type", "application/json");
     try {
       JsonArray docsJson = new JsonArray();
 
@@ -215,16 +221,39 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
         ReadableBlipData document = wavelet.getDocument(docName);
 
         /*
-         * copied the method and disable replacing new lines with whitespaces
+         * skips non-blip documents
          */
-        // String text = Snippets.collateTextForWavelet(wavelet);
+        if ("conversation".equals(docName) || "m/read".equals(docName)) {
+          continue;
+        }
+
         String text = readText(document);
 
         /*
-         * XXX i shouldn't skip empty wave/blips
+         * (regression alert) it hangs at
+         * com.google.common.collect.Iterables.cycle(T...)
          */
-        // if (text.length() == 0) {
-        // }
+        // String text =
+        // Snippets
+        // .collateTextForOps(Iterables.cycle((DocOp)
+        // document.getContent().asOperation()));
+
+        /*
+         * (regression alert) cannot reuse Snippets because it trims the
+         * content.
+         */
+        // Iterable<DocOp> docs = Arrays.asList((DocOp)
+        // document.getContent().asOperation());
+        // String text = Snippets.collateTextForOps(docs);
+
+        /*-
+         * XXX (Frank R.) (experimental) skips invisible blips
+         * a newly created blip starts with (and contains only) 
+         * a new line character, and is not treated as invisible
+         */
+        if (text.length() == 0) {
+          continue;
+        }
 
         JsonArray participantsJson = new JsonArray();
         for (ParticipantId participant : wavelet.getParticipants()) {
@@ -270,8 +299,9 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
 
   @Override
   public void waveletUpdate(final ReadableWaveletData wavelet, DeltaSequence deltas) {
-    /*-
-     * commented out for optimization, see waveletCommitted(WaveletName, HashedVersion)
+    /*
+     * (regression alert) commented out for optimization, see
+     * waveletCommitted(WaveletName, HashedVersion)
      */
     // updateIndex(wavelet);
   }
@@ -282,7 +312,7 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
     Preconditions.checkNotNull(waveletName);
 
     /*
-     * XXX don't update index here (on current thread) to prevent lock
+     * (regression alert) don't update on current thread to prevent lock error
      */
     ListenableFutureTask<Void> task = new ListenableFutureTask<Void>(new Callable<Void>() {
 
@@ -303,6 +333,53 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
       }
     });
     executor.execute(task);
+
+    return;
+  }
+
+  @Override
+  public synchronized void remakeIndex() throws WaveletStateException, WaveServerException {
+
+    /*-
+     * to fully rebuild the index, need to delete everything first
+     * the <query> tag should contain the value of
+     * org.waveprotocol.box.server.waveserver.SolrSearchProviderImpl.Q
+     *
+     * http://localhost:8983/solr/update?stream.body=<delete><query>waveId_s:[*%20TO%20*]%20AND%20waveletId_s:[*%20TO%20*]%20AND%20docName_s:[*%20TO%20*]%20AND%20lmt_l:[*%20TO%20*]%20AND%20with_ss:[*%20TO%20*]%20AND%20with_txt:[*%20TO%20*]%20AND%20creator_t:[*%20TO%20*]</query></delete>
+     * http://localhost:8983/solr/update?stream.body=<commit/>
+     *
+     * see 
+     * http://wiki.apache.org/solr/FAQ#How_can_I_delete_all_documents_from_my_index.3F
+     */
+
+    GetMethod getMethod = new GetMethod();
+    try {
+      getMethod
+          .setURI(new URI(SolrSearchProviderImpl.SOLR_BASE_URL + "/update?wt=json"
+              + "&stream.body=<delete><query>" + SolrSearchProviderImpl.Q + "</query></delete>",
+              false));
+
+      HttpClient httpClient = new HttpClient();
+      int statusCode = httpClient.executeMethod(getMethod);
+      if (statusCode == HttpStatus.SC_OK) {
+        getMethod.setURI(new URI(SolrSearchProviderImpl.SOLR_BASE_URL + "/update?wt=json"
+            + "&stream.body=<commit/>", false));
+
+        httpClient = new HttpClient();
+        statusCode = httpClient.executeMethod(getMethod);
+        if (statusCode != HttpStatus.SC_OK) {
+          LOG.warning("failed to clean solr index");
+        }
+      } else {
+        LOG.warning("failed to clean solr index");
+      }
+    } catch (Exception e) {
+      LOG.warning("failed to clean solr index", e);
+    } finally {
+      getMethod.releaseConnection();
+    }
+
+    super.remakeIndex();
 
     return;
   }

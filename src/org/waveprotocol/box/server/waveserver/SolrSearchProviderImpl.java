@@ -19,10 +19,11 @@
 
 package org.waveprotocol.box.server.waveserver;
 
+import com.google.common.base.Function;
 import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.inject.Inject;
@@ -36,16 +37,18 @@ import org.apache.http.HttpStatus;
 import org.waveprotocol.box.server.CoreSettings;
 import org.waveprotocol.wave.model.id.WaveId;
 import org.waveprotocol.wave.model.id.WaveletId;
-import org.waveprotocol.wave.model.id.WaveletName;
 import org.waveprotocol.wave.model.wave.ParticipantId;
-import org.waveprotocol.wave.model.wave.ParticipantIdUtil;
+import org.waveprotocol.wave.model.wave.data.ReadableWaveletData;
 import org.waveprotocol.wave.model.wave.data.WaveViewData;
-import org.waveprotocol.wave.model.wave.data.impl.WaveViewDataImpl;
 import org.waveprotocol.wave.util.logging.Log;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -54,7 +57,7 @@ import java.util.regex.Pattern;
  * 
  * @author Frank R. <renfeng.cn@gmail.com>
  */
-public class SolrSearchProviderImpl implements SearchProvider {
+public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements SearchProvider {
 
   private static final Log LOG = Log.get(SolrSearchProviderImpl.class);
 
@@ -75,12 +78,14 @@ public class SolrSearchProviderImpl implements SearchProvider {
   public static final String IN = "in_ss";
 
   /*
-   * TODO make it configurable
+   * TODO (Frank R.) make it configurable
    */
   public static final String SOLR_BASE_URL = "http://localhost:8983/solr";
 
   /*-
    * http://wiki.apache.org/solr/CommonQueryParameters#q
+   *
+   * (regression alert) the commented enables empty wave to be listed in search results
    */
   public static final String Q = WAVE_ID + ":[* TO *]" //
       + " AND " + WAVELET_ID + ":[* TO *]" //
@@ -89,29 +94,27 @@ public class SolrSearchProviderImpl implements SearchProvider {
       + " AND " + WITH + ":[* TO *]" //
       + " AND " + WITH_FUZZY + ":[* TO *]" //
       + " AND " + CREATOR + ":[* TO *]" //
-      + " AND " + TEXT + ":[* TO *]";
+      /* + " AND " + TEXT + ":[* TO *]" */;
 
   /*-
-   * XXX will it be better to replace lucene with edismax?
+   * XXX (Frank R.) (experimental and disabled) edismax query parser
+   *
    * mm (Minimum 'Should' Match)
    * http://wiki.apache.org/solr/ExtendedDisMax#mm_.28Minimum_.27Should.27_Match.29
-   * 
-   * XXX not at the moment! q.op=AND is ignored by !edismax, see
-   * 
+   *
+   * !edismax ignores "q.op=AND", see
+   *
    * ExtendedDismaxQParser (edismax) does not obey q.op for queries with operators
    * https://issues.apache.org/jira/browse/SOLR-3741
-   * 
+   *
    * ExtendedDismaxQParser (edismax) does not obey q.op for parenthesized sub-queries
    * https://issues.apache.org/jira/browse/SOLR-3740
-   * 
    */
+  // public static final String FILTER_QUERY_PREFIX = "{!edismax q.op=AND df=" +
+  // TEXT + "}" //
+  // + WITH + ":";
   public static final String FILTER_QUERY_PREFIX = "{!lucene q.op=AND df=" + TEXT + "}" //
       + WITH + ":";
-
-  private final WaveDigester digester;
-  private final WaveMap waveMap;
-
-  private final ParticipantId sharedDomainParticipantId;
 
   public static String buildUserQuery(String query) {
     return query.replaceAll(WORD_START + TokenQueryType.IN.getToken() + ":", IN + ":")
@@ -122,9 +125,7 @@ public class SolrSearchProviderImpl implements SearchProvider {
   @Inject
   public SolrSearchProviderImpl(WaveDigester digester, WaveMap waveMap,
       @Named(CoreSettings.WAVE_SERVER_DOMAIN) String waveDomain) {
-    this.digester = digester;
-    this.waveMap = waveMap;
-    sharedDomainParticipantId = ParticipantIdUtil.makeUnsafeSharedDomainParticipantId(waveDomain);
+    super(waveDomain, digester, waveMap, null);
   }
 
   @Override
@@ -132,6 +133,10 @@ public class SolrSearchProviderImpl implements SearchProvider {
     LOG.fine("Search query '" + query + "' from user: " + user + " [" + startAt + ", "
         + (startAt + numResults - 1) + "]");
 
+    /*-
+     * see
+     * org.waveprotocol.box.server.waveserver.SimpleSearchProviderImpl.search(ParticipantId, String, int, int).isAllQuery
+     */
     // Maybe should be changed in case other folders in addition to 'inbox' are
     // added.
     final boolean isAllQuery = !IN_PATTERN.matcher(query).find();
@@ -140,20 +145,14 @@ public class SolrSearchProviderImpl implements SearchProvider {
 
     if (numResults > 0) {
 
-      String fq;
-      if (isAllQuery) {
-        fq =
-            FILTER_QUERY_PREFIX + "(" + user.getAddress() + " OR " + sharedDomainParticipantId
-                + ")";
-      } else {
-        fq = FILTER_QUERY_PREFIX + user.getAddress();
-      }
-      if (query.length() > 0) {
-        fq += " AND (" + buildUserQuery(query) + ")";
-      }
-
       int start = startAt;
       int rows = Math.max(numResults, ROWS);
+
+      /*-
+       * "fq" stands for Filter Query. see
+       * http://wiki.apache.org/solr/CommonQueryParameters#fq
+       */
+      String fq = buildFilterQuery(query, isAllQuery, user.getAddress());
 
       GetMethod getMethod = new GetMethod();
       try {
@@ -177,27 +176,49 @@ public class SolrSearchProviderImpl implements SearchProvider {
             break;
           }
 
-          for (int i = 0; i < docsJson.size(); i++) {
-            JsonObject docJson = docsJson.get(i).getAsJsonObject();
-            WaveId waveId = WaveId.deserialise(docJson.getAsJsonPrimitive(WAVE_ID).getAsString());
-            WaveletId waveletId =
-                WaveletId.deserialise(docJson.getAsJsonPrimitive(WAVELET_ID).getAsString());
+          Iterator<JsonElement> docJsonIterator = docsJson.iterator();
+          while (docJsonIterator.hasNext()) {
+            JsonObject docJson = docJsonIterator.next().getAsJsonObject();
+
             /*
-             * TODO
+             * TODO (Frank R.) c.f.
              * org.waveprotocol.box.server.waveserver.SimpleSearchProviderImpl
              * .isWaveletMatchesCriteria(ReadableWaveletData, ParticipantId,
              * ParticipantId, List<ParticipantId>, List<ParticipantId>, boolean)
              */
+
+            WaveId waveId = WaveId.deserialise(docJson.getAsJsonPrimitive(WAVE_ID).getAsString());
+            WaveletId waveletId =
+                WaveletId.deserialise(docJson.getAsJsonPrimitive(WAVELET_ID).getAsString());
             currentUserWavesView.put(waveId, waveletId);
-            if (currentUserWavesView.size() >= numResults) {
-              break;
-            }
+
+            /*-
+             * XXX (Frank R.) (experimental and disabled) reduce round trips to solr
+             *
+             * solr search result may contain waves ignored
+             * by the result list due to the flaw in 
+             * org.waveprotocol.box.server.waveserver.SolrWaveIndexerImpl.updateIndex(ReadableWaveletData)
+             */
+            // if (currentUserWavesView.size() >= numResults) {
+            // break;
+            // }
           }
 
-          if (currentUserWavesView.size() >= numResults) {
-            break;
-          }
+          /*-
+           * XXX (Frank R.) (experimental and disabled) reduce round trips to solr
+           *
+           * solr search result may contain waves ignored
+           * by the result list due to the flaw in 
+           * org.waveprotocol.box.server.waveserver.SolrWaveIndexerImpl.updateIndex(ReadableWaveletData)
+           */
+          // if (currentUserWavesView.size() >= numResults) {
+          // break;
+          // }
 
+          /*
+           * there won't be any more results - stop querying next page of
+           * results
+           */
           if (docsJson.size() < rows) {
             break;
           }
@@ -213,83 +234,67 @@ public class SolrSearchProviderImpl implements SearchProvider {
       }
     }
 
-    Map<WaveId, WaveViewData> results = filterWavesViewBySearchCriteria(currentUserWavesView);
+    Function<ReadableWaveletData, Boolean> matchesFunction =
+        new Function<ReadableWaveletData, Boolean>() {
+
+          @Override
+          public Boolean apply(ReadableWaveletData wavelet) {
+            return true;
+          }
+        };
+
+    Map<WaveId, WaveViewData> results =
+        filterWavesViewBySearchCriteria(matchesFunction, currentUserWavesView);
     if (LOG.isFineLoggable()) {
       for (Map.Entry<WaveId, WaveViewData> e : results.entrySet()) {
         LOG.fine("filtered results contains: " + e.getKey());
       }
     }
 
-    Collection<WaveViewData> searchResult = results.values();
+    Collection<WaveViewData> searchResult = computeSearchResult(user, startAt, numResults, results);
     LOG.info("Search response to '" + query + "': " + searchResult.size() + " results, user: "
         + user);
     return digester.generateSearchResult(user, query, searchResult);
   }
 
-  private Map<WaveId, WaveViewData> filterWavesViewBySearchCriteria(
-      Multimap<WaveId, WaveletId> currentUserWavesView) {
-    // Must use a map with stable ordering, since indices are meaningful.
-    Map<WaveId, WaveViewData> results = Maps.newLinkedHashMap();
+  /*
+   * (regression alert) can't make it static due to sharedDomainParticipantId
+   */
+  private String buildFilterQuery(String query, final boolean isAllQuery,
+      String addressOfRequiredParticipant) {
 
-    // Loop over the user waves view.
-    for (WaveId waveId : currentUserWavesView.keySet()) {
-      Collection<WaveletId> waveletIds = currentUserWavesView.get(waveId);
-      WaveViewData view = null; // Copy of the wave built up for search hits.
-      for (WaveletId waveletId : waveletIds) {
-        WaveletContainer waveletContainer = null;
-        WaveletName waveletname = WaveletName.of(waveId, waveletId);
-
-        // TODO (alown): Find some way to use isLocalWavelet to do this
-        // properly!
-        try {
-          if (LOG.isFineLoggable()) {
-            LOG.fine("Trying as a remote wavelet");
-          }
-          waveletContainer = waveMap.getRemoteWavelet(waveletname);
-        } catch (WaveletStateException e) {
-          LOG.severe(String.format("Failed to get remote wavelet %s", waveletname.toString()), e);
-        } catch (NullPointerException e) {
-          // This is a fairly normal case of it being a local-only wave.
-          // Yet this only seems to appear in the test suite.
-          // Continuing is completely harmless here.
-          LOG.info(
-              String.format("%s is definitely not a remote wavelet. (Null key)",
-                  waveletname.toString()), e);
-        }
-
-        if (waveletContainer == null) {
-          try {
-            if (LOG.isFineLoggable()) {
-              LOG.fine("Trying as a local wavelet");
-            }
-            waveletContainer = waveMap.getLocalWavelet(waveletname);
-          } catch (WaveletStateException e) {
-            LOG.severe(String.format("Failed to get local wavelet %s", waveletname.toString()), e);
-          }
-        }
-
-        // TODO (Yuri Z.) This loop collects all the wavelets that match the
-        // query, so the view is determined by the query. Instead we should
-        // look at the user's wave view and determine if the view matches the
-        // query.
-        try {
-          if (waveletContainer == null) {
-            LOG.fine("----doesn't match: " + waveletContainer);
-            continue;
-          }
-          if (view == null) {
-            view = WaveViewDataImpl.create(waveId);
-          }
-          // Just keep adding all the relevant wavelets in this wave.
-          view.addWavelet(waveletContainer.copyWaveletData());
-        } catch (WaveletStateException e) {
-          LOG.warning("Failed to access wavelet " + waveletContainer.getWaveletName(), e);
-        }
-      }
-      if (view != null) {
-        results.put(waveId, view);
-      }
+    String fq;
+    if (isAllQuery) {
+      fq =
+          FILTER_QUERY_PREFIX + "(" + addressOfRequiredParticipant + " OR "
+              + sharedDomainParticipantId + ")";
+    } else {
+      fq = FILTER_QUERY_PREFIX + addressOfRequiredParticipant;
     }
-    return results;
+    if (query.length() > 0) {
+      fq += " AND (" + buildUserQuery(query) + ")";
+    }
+
+    return fq;
+  }
+
+  /*-
+   * copied with modification from 
+   * org.waveprotocol.box.server.waveserver.SimpleSearchProviderImpl.computeSearchResult(ParticipantId, int, int, Map<TokenQueryType, Set<String>>, Map<WaveId, WaveViewData>)
+   *
+   * removed queryParams
+   */
+  private Collection<WaveViewData> computeSearchResult(final ParticipantId user, int startAt,
+      int numResults, Map<WaveId, WaveViewData> results) {
+    List<WaveViewData> searchResultslist = null;
+    int searchResultSize = results.values().size();
+    // Check if we have enough results to return.
+    if (searchResultSize < startAt) {
+      searchResultslist = Collections.emptyList();
+    } else {
+      int endAt = Math.min(startAt + numResults, searchResultSize);
+      searchResultslist = new ArrayList<WaveViewData>(results.values()).subList(startAt, endAt);
+    }
+    return searchResultslist;
   }
 }
