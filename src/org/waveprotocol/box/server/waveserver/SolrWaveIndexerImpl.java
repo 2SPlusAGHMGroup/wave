@@ -230,6 +230,11 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
         String text = readText(document);
 
         /*
+         * TODO (Frank R.) index wave title for link text in solr-bot search
+         * results
+         */
+
+        /*
          * (regression alert) it hangs at
          * com.google.common.collect.Iterables.cycle(T...)
          */

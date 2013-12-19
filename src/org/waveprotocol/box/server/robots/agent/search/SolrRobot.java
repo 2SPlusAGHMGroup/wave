@@ -310,7 +310,9 @@ public class SolrRobot extends AbstractBaseRobotAgent {
      * "fq" stands for Filter Query. see
      * http://wiki.apache.org/solr/CommonQueryParameters#fq
      */
-    String fq = buildFilterQuery(query, isAllQuery, creator);
+    String fq =
+        SolrSearchProviderImpl.buildFilterQuery(query, isAllQuery, creator,
+            sharedDomainParticipantId);
 
     GetMethod getMethod = new GetMethod();
     try {
@@ -458,29 +460,6 @@ public class SolrRobot extends AbstractBaseRobotAgent {
     }
 
     return;
-  }
-
-  /*-
-   * XXX (Yuri Z.) suggested to refactor
-   * see
-   * org.waveprotocol.box.server.waveserver.SolrSearchProviderImpl.buildFilterQuery(String, boolean, String)
-   */
-  private String buildFilterQuery(String query, final boolean isAllQuery,
-      String addressOfRequiredParticipant) {
-
-    String fq;
-    if (isAllQuery) {
-      fq =
-          SolrSearchProviderImpl.FILTER_QUERY_PREFIX + "(" + addressOfRequiredParticipant + " OR "
-              + sharedDomainParticipantId + ")";
-    } else {
-      fq = SolrSearchProviderImpl.FILTER_QUERY_PREFIX + addressOfRequiredParticipant;
-    }
-    if (query.length() > 0) {
-      fq += " AND (" + SolrSearchProviderImpl.buildUserQuery(query) + ")";
-    }
-
-    return fq;
   }
 
   private void appendHighlighted(Blip outputBlip, String text) {

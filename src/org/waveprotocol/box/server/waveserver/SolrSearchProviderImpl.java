@@ -113,7 +113,7 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
   // public static final String FILTER_QUERY_PREFIX = "{!edismax q.op=AND df=" +
   // TEXT + "}" //
   // + WITH + ":";
-  public static final String FILTER_QUERY_PREFIX = "{!lucene q.op=AND df=" + TEXT + "}" //
+  private static final String FILTER_QUERY_PREFIX = "{!lucene q.op=AND df=" + TEXT + "}" //
       + WITH + ":";
 
   public static String buildUserQuery(String query) {
@@ -152,7 +152,7 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
        * "fq" stands for Filter Query. see
        * http://wiki.apache.org/solr/CommonQueryParameters#fq
        */
-      String fq = buildFilterQuery(query, isAllQuery, user.getAddress());
+      String fq = buildFilterQuery(query, isAllQuery, user.getAddress(), sharedDomainParticipantId);
 
       GetMethod getMethod = new GetMethod();
       try {
@@ -196,7 +196,7 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
              * XXX (Frank R.) (experimental and disabled) reduce round trips to solr
              *
              * solr search result may contain waves ignored
-             * by the result list due to the flaw in 
+             * by the result list due to the flaw in
              * org.waveprotocol.box.server.waveserver.SolrWaveIndexerImpl.updateIndex(ReadableWaveletData)
              */
             // if (currentUserWavesView.size() >= numResults) {
@@ -208,7 +208,7 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
            * XXX (Frank R.) (experimental and disabled) reduce round trips to solr
            *
            * solr search result may contain waves ignored
-           * by the result list due to the flaw in 
+           * by the result list due to the flaw in
            * org.waveprotocol.box.server.waveserver.SolrWaveIndexerImpl.updateIndex(ReadableWaveletData)
            */
           // if (currentUserWavesView.size() >= numResults) {
@@ -260,8 +260,8 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
   /*
    * (regression alert) can't make it static due to sharedDomainParticipantId
    */
-  private String buildFilterQuery(String query, final boolean isAllQuery,
-      String addressOfRequiredParticipant) {
+  public static String buildFilterQuery(String query, final boolean isAllQuery,
+      String addressOfRequiredParticipant, ParticipantId sharedDomainParticipantId) {
 
     String fq;
     if (isAllQuery) {
@@ -279,7 +279,7 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
   }
 
   /*-
-   * copied with modification from 
+   * copied with modification from
    * org.waveprotocol.box.server.waveserver.SimpleSearchProviderImpl.computeSearchResult(ParticipantId, int, int, Map<TokenQueryType, Set<String>>, Map<WaveId, WaveViewData>)
    *
    * removed queryParams
