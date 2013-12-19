@@ -34,9 +34,7 @@ import com.google.wave.api.Blip;
 import com.google.wave.api.BlipContentRefs;
 import com.google.wave.api.Range;
 import com.google.wave.api.Wavelet;
-import com.google.wave.api.event.BlipSubmittedEvent;
 import com.google.wave.api.event.DocumentChangedEvent;
-import com.google.wave.api.event.WaveletSelfAddedEvent;
 import com.google.wave.api.impl.DocumentModifyAction.BundledAnnotation;
 
 import org.apache.commons.httpclient.HttpClient;
@@ -140,8 +138,8 @@ public class SolrRobot extends AbstractBaseRobotAgent {
     Blip blip = event.getBlip();
 
     /*-
-     * looks for the line the user just edited. i.e. 
-     * 1. ends with a new line 
+     * looks for the line the user just edited. i.e.
+     * 1. ends with a new line
      * 2. was changed just now
      */
     long now = new Date().getTime();
@@ -159,8 +157,8 @@ public class SolrRobot extends AbstractBaseRobotAgent {
        */
       if (annotationKey.startsWith("user/d/")) {
         /*-
-         * The value of the annotation is a comma separated list of 
-         * (userid, timestamp [,ime composition state]) 
+         * The value of the annotation is a comma separated list of
+         * (userid, timestamp [,ime composition state])
          * The timestamp is the last time the cursor was updated.
          */
         String[] values = annotation.getValue().split(",");
@@ -207,7 +205,6 @@ public class SolrRobot extends AbstractBaseRobotAgent {
 
   private void search(String creator, boolean searchAllowed, String query, Blip blip, int start) {
 
-    Blip outputBlip = blip.insertInlineBlip(start - 1);
     if (searchAllowed) {
       /*
        * (regression alert) the commented code does work as expected
@@ -230,11 +227,18 @@ public class SolrRobot extends AbstractBaseRobotAgent {
       }
 
       /*
-       * TODO (Frank R.) async output of search results
+       * XXX (Frank R.) (experimental) ignores all (empty) query
        */
-      // searchAsync(message, creator, outputBlip);
-      search(query, creator, outputBlip);
+      if (query.length() > 0) {
+        Blip outputBlip = blip.insertInlineBlip(start - 1);
+        /*
+         * TODO (Frank R.) async output of search results
+         */
+        // searchAsync(message, creator, outputBlip);
+        search(query, creator, outputBlip);
+      }
     } else {
+      Blip outputBlip = blip.insertInlineBlip(start - 1);
       appendError(outputBlip,
           "Search is allowed only when the creator of the wave is currently a participant.");
     }
@@ -279,16 +283,6 @@ public class SolrRobot extends AbstractBaseRobotAgent {
   }
 
   private void search(String query, String creator, Blip outputBlip) {
-
-    /*
-     * XXX (Frank R.) (experimental) ignores all (empty) query
-     */
-    if (query.length() <= 0) {
-      /*
-       * ignores empty query
-       */
-      return;
-    }
 
     // Maybe should be changed in case other folders in addition to 'inbox' are
     // added.
@@ -376,7 +370,7 @@ public class SolrRobot extends AbstractBaseRobotAgent {
 
             /*-
              * XXX (Frank R.) replace link text with wave title
-             * 
+             *
              * need to index the title as well
              */
             appendWaveLink(outputBlip, id, "wave://" + id);

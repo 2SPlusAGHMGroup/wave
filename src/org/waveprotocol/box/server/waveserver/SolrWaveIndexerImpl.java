@@ -71,14 +71,14 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
   private final ReadableWaveletDataProvider waveletDataProvider;
 
   /*-
-   * copied with modification from 
+   * copied with modifications from
    * org.waveprotocol.box.common.Snippets.collateTextForOps(Iterable<DocOp>)
    *
    * replaced white space character with new line
    */
   /**
    * Concatenates all of the text of the specified docops into a single String.
-   *
+   * 
    * @param documentops the document operations to concatenate.
    * @return A String containing the characters from the operations.
    */
@@ -248,7 +248,7 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
 
         /*-
          * XXX (Frank R.) (experimental) skips invisible blips
-         * a newly created blip starts with (and contains only) 
+         * a newly created blip starts with (and contains only)
          * a new line character, and is not treated as invisible
          */
         if (text.length() == 0) {
@@ -348,7 +348,7 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
      * http://localhost:8983/solr/update?stream.body=<delete><query>waveId_s:[*%20TO%20*]%20AND%20waveletId_s:[*%20TO%20*]%20AND%20docName_s:[*%20TO%20*]%20AND%20lmt_l:[*%20TO%20*]%20AND%20with_ss:[*%20TO%20*]%20AND%20with_txt:[*%20TO%20*]%20AND%20creator_t:[*%20TO%20*]</query></delete>
      * http://localhost:8983/solr/update?stream.body=<commit/>
      *
-     * see 
+     * see
      * http://wiki.apache.org/solr/FAQ#How_can_I_delete_all_documents_from_my_index.3F
      */
 
