@@ -50,7 +50,7 @@ import java.util.Set;
 
 /**
  * Search provider that reads user specific info from user data wavelet.
- *
+ * 
  * @author yurize@apache.org (Yuri Zelikov)
  */
 public class SimpleSearchProviderImpl implements SearchProvider {
@@ -74,8 +74,7 @@ public class SimpleSearchProviderImpl implements SearchProvider {
   }
 
   @Override
-  public SearchResult search(final ParticipantId user, String query, int startAt,
-      int numResults) {
+  public SearchResult search(final ParticipantId user, String query, int startAt, int numResults) {
     LOG.fine("Search query '" + query + "' from user: " + user + " [" + startAt + ", "
         + (startAt + numResults - 1) + "]");
     Map<TokenQueryType, Set<String>> queryParams = null;
@@ -96,24 +95,24 @@ public class SimpleSearchProviderImpl implements SearchProvider {
       String localDomain = user.getDomain();
       // Build and validate.
       withParticipantIds =
-          QueryHelper.buildValidatedParticipantIds(queryParams, TokenQueryType.WITH,
-              localDomain);
+          QueryHelper.buildValidatedParticipantIds(queryParams, TokenQueryType.WITH, localDomain);
       creatorParticipantIds =
-          QueryHelper.buildValidatedParticipantIds(queryParams, TokenQueryType.CREATOR,
-              localDomain);
+          QueryHelper
+              .buildValidatedParticipantIds(queryParams, TokenQueryType.CREATOR, localDomain);
     } catch (InvalidParticipantAddress e) {
       // Invalid address - stop and return empty search results.
       LOG.warning("Invalid participantId: " + e.getAddress() + " in query: " + query);
       return digester.generateSearchResult(user, query, null);
     }
 
-    Multimap<WaveId, WaveletId> currentUserWavesView =  createWavesViewToFilter(user, isAllQuery);
+    Multimap<WaveId, WaveletId> currentUserWavesView = createWavesViewToFilter(user, isAllQuery);
     Function<ReadableWaveletData, Boolean> filterWaveletsFunction =
         createFilterWaveletsFunction(user, isAllQuery, withParticipantIds, creatorParticipantIds);
-    Map<WaveId, WaveViewData> results = filterWavesViewBySearchCriteria(filterWaveletsFunction, currentUserWavesView);
+    Map<WaveId, WaveViewData> results =
+        filterWavesViewBySearchCriteria(filterWaveletsFunction, currentUserWavesView);
 
-    if(LOG.isFineLoggable()) {
-      for(Map.Entry e : results.entrySet()) {
+    if (LOG.isFineLoggable()) {
+      for (Map.Entry<WaveId, WaveViewData> e : results.entrySet()) {
         LOG.fine("filtered results contains: " + e.getKey());
       }
     }
@@ -133,11 +132,12 @@ public class SimpleSearchProviderImpl implements SearchProvider {
     if (isAllQuery) {
       // If it is the "all" query - we need to include also waves view of the
       // shared domain participant.
-      currentUserWavesView.putAll(waveViewProvider.retrievePerUserWaveView(sharedDomainParticipantId));
+      currentUserWavesView.putAll(waveViewProvider
+          .retrievePerUserWaveView(sharedDomainParticipantId));
     }
 
-    if(LOG.isFineLoggable()) {
-      for(Map.Entry e : currentUserWavesView.entries()) {
+    if (LOG.isFineLoggable()) {
+      for (Map.Entry<WaveId, WaveletId> e : currentUserWavesView.entries()) {
         LOG.fine("unfiltered view contains: " + e.getKey() + " " + e.getValue());
       }
     }
@@ -145,9 +145,9 @@ public class SimpleSearchProviderImpl implements SearchProvider {
     return currentUserWavesView;
   }
 
-  private Function<ReadableWaveletData, Boolean> createFilterWaveletsFunction(final ParticipantId user,
-      final boolean isAllQuery, final List<ParticipantId> withParticipantIds,
-      final List<ParticipantId> creatorParticipantIds) {
+  private Function<ReadableWaveletData, Boolean> createFilterWaveletsFunction(
+      final ParticipantId user, final boolean isAllQuery,
+      final List<ParticipantId> withParticipantIds, final List<ParticipantId> creatorParticipantIds) {
     // A function to be applied by the WaveletContainer.
     Function<ReadableWaveletData, Boolean> matchesFunction =
         new Function<ReadableWaveletData, Boolean>() {
@@ -155,8 +155,8 @@ public class SimpleSearchProviderImpl implements SearchProvider {
           @Override
           public Boolean apply(ReadableWaveletData wavelet) {
             try {
-              return isWaveletMatchesCriteria(wavelet, user, sharedDomainParticipantId, withParticipantIds,
-                  creatorParticipantIds, isAllQuery);
+              return isWaveletMatchesCriteria(wavelet, user, sharedDomainParticipantId,
+                  withParticipantIds, creatorParticipantIds, isAllQuery);
             } catch (WaveletStateException e) {
               LOG.warning(
                   "Failed to access wavelet "
@@ -176,65 +176,76 @@ public class SimpleSearchProviderImpl implements SearchProvider {
 
     // Loop over the user waves view.
     for (WaveId waveId : currentUserWavesView.keySet()) {
-      Collection<WaveletId> waveletIds =  currentUserWavesView.get(waveId);
-      WaveViewData view = null; // Copy of the wave built up for search hits.
-      for (WaveletId waveletId : waveletIds) {
-        WaveletContainer waveletContainer = null;
-        WaveletName waveletname = WaveletName.of(waveId, waveletId);
-
-        // TODO (alown): Find some way to use isLocalWavelet to do this properly!
-        try {
-          if(LOG.isFineLoggable()) {
-            LOG.fine("Trying as a remote wavelet");
-          }
-          waveletContainer = waveMap.getRemoteWavelet(waveletname);
-        } catch (WaveletStateException e) {
-          LOG.severe(String.format("Failed to get remote wavelet %s", waveletname.toString()), e);
-        } catch (NullPointerException e) {
-          // This is a fairly normal case of it being a local-only wave.
-          // Yet this only seems to appear in the test suite.
-          // Continuing is completely harmless here.
-          LOG.info(String.format("%s is definitely not a remote wavelet. (Null key)", waveletname.toString()), e);
-        }
-
-        if(waveletContainer == null) {
-          try {
-            if(LOG.isFineLoggable()) {
-                LOG.fine("Trying as a local wavelet");
-            }
-            waveletContainer = waveMap.getLocalWavelet(waveletname);
-          } catch (WaveletStateException e) {
-            LOG.severe(String.format("Failed to get local wavelet %s", waveletname.toString()), e);
-          }
-        }
-
-        // TODO (Yuri Z.) This loop collects all the wavelets that match the
-        // query, so the view is determined by the query. Instead we should
-        // look at the user's wave view and determine if the view matches the query.
-        try {
-          if (waveletContainer == null || !waveletContainer.applyFunction(matchesFunction)) {
-            LOG.fine("----doesn't match: " + waveletContainer);
-            continue;
-          }
-          if (view == null) {
-            view = WaveViewDataImpl.create(waveId);
-          }
-          // Just keep adding all the relevant wavelets in this wave.
-          view.addWavelet(waveletContainer.copyWaveletData());
-        } catch (WaveletStateException e) {
-          LOG.warning("Failed to access wavelet " + waveletContainer.getWaveletName(), e);
-        }
-      }
+      Collection<WaveletId> waveletIds = currentUserWavesView.get(waveId);
+      WaveViewData view = buildWaveViewData(waveId, waveletIds, matchesFunction, waveMap);
       if (view != null) {
-          results.put(waveId, view);
+        results.put(waveId, view);
       }
     }
     return results;
   }
 
+  public static WaveViewData buildWaveViewData(WaveId waveId, Collection<WaveletId> waveletIds,
+      Function<ReadableWaveletData, Boolean> matchesFunction, WaveMap waveMap) {
+
+    WaveViewData view = null; // Copy of the wave built up for search hits.
+    for (WaveletId waveletId : waveletIds) {
+      WaveletContainer waveletContainer = null;
+      WaveletName waveletname = WaveletName.of(waveId, waveletId);
+
+      // TODO (alown): Find some way to use isLocalWavelet to do this properly!
+      try {
+        if (LOG.isFineLoggable()) {
+          LOG.fine("Trying as a remote wavelet");
+        }
+        waveletContainer = waveMap.getRemoteWavelet(waveletname);
+      } catch (WaveletStateException e) {
+        LOG.severe(String.format("Failed to get remote wavelet %s", waveletname.toString()), e);
+      } catch (NullPointerException e) {
+        // This is a fairly normal case of it being a local-only wave.
+        // Yet this only seems to appear in the test suite.
+        // Continuing is completely harmless here.
+        LOG.info(
+            String.format("%s is definitely not a remote wavelet. (Null key)",
+                waveletname.toString()), e);
+      }
+
+      if (waveletContainer == null) {
+        try {
+          if (LOG.isFineLoggable()) {
+            LOG.fine("Trying as a local wavelet");
+          }
+          waveletContainer = waveMap.getLocalWavelet(waveletname);
+        } catch (WaveletStateException e) {
+          LOG.severe(String.format("Failed to get local wavelet %s", waveletname.toString()), e);
+        }
+      }
+
+      // TODO (Yuri Z.) This loop collects all the wavelets that match the
+      // query, so the view is determined by the query. Instead we should
+      // look at the user's wave view and determine if the view matches the
+      // query.
+      try {
+        if (waveletContainer == null || !waveletContainer.applyFunction(matchesFunction)) {
+          LOG.fine("----doesn't match: " + waveletContainer);
+          continue;
+        }
+        if (view == null) {
+          view = WaveViewDataImpl.create(waveId);
+        }
+        // Just keep adding all the relevant wavelets in this wave.
+        view.addWavelet(waveletContainer.copyWaveletData());
+      } catch (WaveletStateException e) {
+        LOG.warning("Failed to access wavelet " + waveletContainer.getWaveletName(), e);
+      }
+    }
+
+    return view;
+  }
+
   /**
    * Verifies whether the wavelet matches the filter criteria.
-   *
+   * 
    * @param wavelet the wavelet.
    * @param user the logged in user.
    * @param sharedDomainParticipantId the shared domain participant id.
@@ -281,8 +292,8 @@ public class SimpleSearchProviderImpl implements SearchProvider {
     return true;
   }
 
-  private Collection<WaveViewData> computeSearchResult(final ParticipantId user,
-      int startAt, int numResults, Map<TokenQueryType, Set<String>> queryParams,
+  private Collection<WaveViewData> computeSearchResult(final ParticipantId user, int startAt,
+      int numResults, Map<TokenQueryType, Set<String>> queryParams,
       Map<WaveId, WaveViewData> results) {
     List<WaveViewData> searchResultslist = null;
     int searchResultSize = results.values().size();

@@ -62,7 +62,7 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
   private static final Log LOG = Log.get(SolrSearchProviderImpl.class);
 
   private static final String WORD_START = "(\\b|^)";
-  public static final Pattern IN_PATTERN = Pattern.compile("\\bin:\\S*");
+  private static final Pattern IN_PATTERN = Pattern.compile("\\bin:\\S*");
 
   public static final int ROWS = 10;
 
@@ -116,6 +116,16 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
   private static final String FILTER_QUERY_PREFIX = "{!lucene q.op=AND df=" + TEXT + "}" //
       + WITH + ":";
 
+
+  public static Function<ReadableWaveletData, Boolean> matchesFunction =
+      new Function<ReadableWaveletData, Boolean>() {
+
+        @Override
+        public Boolean apply(ReadableWaveletData wavelet) {
+          return true;
+        }
+      };
+
   public static String buildUserQuery(String query) {
     return query.replaceAll(WORD_START + TokenQueryType.IN.getToken() + ":", IN + ":")
         .replaceAll(WORD_START + TokenQueryType.WITH.getToken() + ":", WITH_FUZZY + ":")
@@ -139,7 +149,7 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
      */
     // Maybe should be changed in case other folders in addition to 'inbox' are
     // added.
-    final boolean isAllQuery = !IN_PATTERN.matcher(query).find();
+    final boolean isAllQuery = isAllQuery(query);
 
     Multimap<WaveId, WaveletId> currentUserWavesView = HashMultimap.create();
 
@@ -234,15 +244,6 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
       }
     }
 
-    Function<ReadableWaveletData, Boolean> matchesFunction =
-        new Function<ReadableWaveletData, Boolean>() {
-
-          @Override
-          public Boolean apply(ReadableWaveletData wavelet) {
-            return true;
-          }
-        };
-
     Map<WaveId, WaveViewData> results =
         filterWavesViewBySearchCriteria(matchesFunction, currentUserWavesView);
     if (LOG.isFineLoggable()) {
@@ -255,6 +256,10 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
     LOG.info("Search response to '" + query + "': " + searchResult.size() + " results, user: "
         + user);
     return digester.generateSearchResult(user, query, searchResult);
+  }
+
+  public static boolean isAllQuery(String query) {
+    return !IN_PATTERN.matcher(query).find();
   }
 
   /*

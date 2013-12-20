@@ -70,6 +70,11 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
 
   private final ReadableWaveletDataProvider waveletDataProvider;
 
+  /*
+   * (regression alert) for getting the title of a wave
+   */
+  // private final ConversationUtil conversationUtil;
+
   /*-
    * copied with modifications from
    * org.waveprotocol.box.common.Snippets.collateTextForOps(Iterable<DocOp>)
@@ -217,6 +222,14 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
       String modified = Long.toString(wavelet.getLastModifiedTime());
       String creator = wavelet.getCreator().getAddress();
 
+      /*
+       * (regression alert) don't index wave title for link text in solr-bot
+       * search results. instead, reuse WaveDigester
+       */
+      // String title =
+      // TitleHelper.extractTitle(document.getContent().getMutableDocument());
+      // String title = getTitle(wavelet.getWaveId(), wavelet.getWaveletId());
+
       for (String docName : wavelet.getDocumentIds()) {
         ReadableBlipData document = wavelet.getDocument(docName);
 
@@ -229,10 +242,6 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
 
         String text = readText(document);
 
-        /*
-         * TODO (Frank R.) index wave title for link text in solr-bot search
-         * results
-         */
 
         /*
          * (regression alert) it hangs at
@@ -301,6 +310,75 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
 
     return;
   }
+
+  /*
+   * (regression alert) gets wave title - too overhead for updating index
+   */
+  // private String getTitle(WaveId waveId, WaveletId waveletId) {
+  //
+  // String title = null;
+  //
+  // WaveViewDataImpl wave = WaveViewDataImpl.create(waveId);
+  //
+  // WaveletContainer waveletContainer = null;
+  // WaveletName waveletname = WaveletName.of(waveId, waveletId);
+  //
+  // /*-
+  // * copied from
+  // *
+  // org.waveprotocol.box.server.waveserver.SimpleSearchProviderImpl.filterWavesViewBySearchCriteria(Function<ReadableWaveletData,
+  // Boolean>, Multimap<WaveId, WaveletId>)
+  // */
+  // // TODO (alown): Find some way to use isLocalWavelet to do this properly!
+  // try {
+  // if (LOG.isFineLoggable()) {
+  // LOG.fine("Trying as a remote wavelet");
+  // }
+  // waveletContainer = waveMap.getRemoteWavelet(waveletname);
+  // } catch (WaveletStateException e) {
+  // LOG.severe(String.format("Failed to get remote wavelet %s",
+  // waveletname.toString()), e);
+  // } catch (NullPointerException e) {
+  // // This is a fairly normal case of it being a local-only wave.
+  // // Yet this only seems to appear in the test suite.
+  // // Continuing is completely harmless here.
+  // LOG.info(String.format("%s is definitely not a remote wavelet. (Null key)",
+  // waveletname.toString()), e);
+  // }
+  //
+  // if (waveletContainer == null) {
+  // try {
+  // if (LOG.isFineLoggable()) {
+  // LOG.fine("Trying as a local wavelet");
+  // }
+  // waveletContainer = waveMap.getLocalWavelet(waveletname);
+  // } catch (WaveletStateException e) {
+  // LOG.severe(String.format("Failed to get local wavelet %s",
+  // waveletname.toString()), e);
+  // }
+  // }
+  //
+  // try {
+  // wave.addWavelet(waveletContainer.copyWaveletData());
+  // for (ObservableWaveletData waveletData : wave.getWavelets()) {
+  // OpBasedWavelet wavelet = OpBasedWavelet.createReadOnly(waveletData);
+  // if (WaveletBasedConversation.waveletHasConversation(wavelet)) {
+  // ObservableConversationView conversations =
+  // conversationUtil.buildConversation(wavelet);
+  // ObservableConversation root = conversations.getRoot();
+  // ObservableConversationBlip firstBlip = root.getRootThread().getFirstBlip();
+  // Document firstBlipContents = firstBlip.getContent();
+  // title = TitleHelper.extractTitle(firstBlipContents).trim();
+  // break;
+  // }
+  // }
+  // } catch (WaveletStateException e) {
+  // LOG.warning("Failed to access wavelet " +
+  // waveletContainer.getWaveletName(), e);
+  // }
+  //
+  // return title;
+  // }
 
   @Override
   public void waveletUpdate(final ReadableWaveletData wavelet, DeltaSequence deltas) {

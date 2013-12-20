@@ -33,6 +33,7 @@ import com.google.wave.api.Annotations;
 import com.google.wave.api.Blip;
 import com.google.wave.api.BlipContentRefs;
 import com.google.wave.api.Range;
+import com.google.wave.api.SearchResult.Digest;
 import com.google.wave.api.Wavelet;
 import com.google.wave.api.event.DocumentChangedEvent;
 import com.google.wave.api.impl.DocumentModifyAction.BundledAnnotation;
@@ -44,12 +45,17 @@ import org.apache.http.HttpStatus;
 import org.waveprotocol.box.server.CoreSettings;
 import org.waveprotocol.box.server.robots.agent.AbstractBaseRobotAgent;
 import org.waveprotocol.box.server.waveserver.SolrSearchProviderImpl;
+import org.waveprotocol.box.server.waveserver.WaveDigester;
+import org.waveprotocol.box.server.waveserver.WaveMap;
+import org.waveprotocol.wave.model.id.WaveId;
+import org.waveprotocol.wave.model.id.WaveletId;
 import org.waveprotocol.wave.model.wave.ParticipantId;
 import org.waveprotocol.wave.model.wave.ParticipantIdUtil;
 import org.waveprotocol.wave.util.logging.Log;
 
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
@@ -93,10 +99,15 @@ public class SolrRobot extends AbstractBaseRobotAgent {
   public static final String ROBOT_URI = AGENT_PREFIX_URI + "/search/solr";
 
   private final ParticipantId sharedDomainParticipantId;
+  private final WaveDigester digester;
+  private final WaveMap waveMap;
 
   @Inject
-  public SolrRobot(Injector injector, @Named(CoreSettings.WAVE_SERVER_DOMAIN) String waveDomain) {
+  public SolrRobot(Injector injector, @Named(CoreSettings.WAVE_SERVER_DOMAIN) String waveDomain,
+      WaveDigester digester, WaveMap waveMap) {
     super(injector);
+    this.digester = digester;
+    this.waveMap = waveMap;
     sharedDomainParticipantId = ParticipantIdUtil.makeUnsafeSharedDomainParticipantId(waveDomain);
   }
 
@@ -286,7 +297,7 @@ public class SolrRobot extends AbstractBaseRobotAgent {
 
     // Maybe should be changed in case other folders in addition to 'inbox' are
     // added.
-    final boolean isAllQuery = !SolrSearchProviderImpl.IN_PATTERN.matcher(query).find();
+    final boolean isAllQuery = !SolrSearchProviderImpl.isAllQuery(query);
 
     /*
      * for filtering current wave from the search result
@@ -355,11 +366,18 @@ public class SolrRobot extends AbstractBaseRobotAgent {
            * ParticipantId, List<ParticipantId>, List<ParticipantId>, boolean)
            */
 
-          String id = docJson.getAsJsonPrimitive("id").getAsString();
+          String id = docJson.getAsJsonPrimitive(SolrSearchProviderImpl.ID).getAsString();
           if (id.startsWith(outputWaveId)) {
             continue;
           }
           count++;
+
+          WaveId waveId =
+              WaveId.deserialise(docJson.getAsJsonPrimitive(SolrSearchProviderImpl.WAVE_ID)
+                  .getAsString());
+          WaveletId waveletId =
+              WaveletId.deserialise(docJson.getAsJsonPrimitive(SolrSearchProviderImpl.WAVELET_ID)
+                  .getAsString());
 
           JsonObject snippetJson = highlighting.getAsJsonObject(id);
           JsonArray textsJson = snippetJson.getAsJsonArray(SolrSearchProviderImpl.TEXT);
@@ -373,9 +391,17 @@ public class SolrRobot extends AbstractBaseRobotAgent {
             /*-
              * XXX (Frank R.) replace link text with wave title
              *
-             * need to index the title as well
+             * (regression alert) don't need to index wave title. see
+             * org.waveprotocol.box.server.waveserver.WaveDigester.generateSearchResult(ParticipantId, String, Collection<WaveViewData>)
              */
-            appendWaveLink(outputBlip, id, "wave://" + id);
+            // String linkText = "wave://" + id;
+            Digest digest =
+                digester.build(ParticipantId.of(creator), SolrSearchProviderImpl.buildWaveViewData(
+                    waveId, Arrays.asList(waveletId), SolrSearchProviderImpl.matchesFunction,
+                    waveMap));
+            String linkText = digest.getTitle() + " — " + digest.getSnippet();
+
+            appendWaveLink(outputBlip, id, linkText);
 
             appendNormal(outputBlip, "\n");
 

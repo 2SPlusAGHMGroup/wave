@@ -42,8 +42,8 @@ import org.waveprotocol.wave.model.supplement.PrimitiveSupplement;
 import org.waveprotocol.wave.model.supplement.PrimitiveSupplementImpl;
 import org.waveprotocol.wave.model.supplement.SupplementedWave;
 import org.waveprotocol.wave.model.supplement.SupplementedWaveImpl;
-import org.waveprotocol.wave.model.supplement.WaveletBasedSupplement;
 import org.waveprotocol.wave.model.supplement.SupplementedWaveImpl.DefaultFollow;
+import org.waveprotocol.wave.model.supplement.WaveletBasedSupplement;
 import org.waveprotocol.wave.model.util.CollectionUtils;
 import org.waveprotocol.wave.model.wave.ParticipantId;
 import org.waveprotocol.wave.model.wave.data.ObservableWaveletData;
@@ -85,44 +85,53 @@ public class WaveDigester {
       return result;
     }
     for (WaveViewData wave : results) {
-      // Note: the indexing infrastructure only supports single-conversation
-      // waves, and requires raw wavelet access for snippeting.
-      ObservableWaveletData root = null;
-      ObservableWaveletData other = null;
-      ObservableWaveletData udw = null;
-      for (ObservableWaveletData waveletData : wave.getWavelets()) {
-        WaveletId waveletId = waveletData.getWaveletId();
-        if (IdUtil.isConversationRootWaveletId(waveletId)) {
-          root = waveletData;
-        } else if (IdUtil.isConversationalId(waveletId)) {
-          other = waveletData;
-        } else if (IdUtil.isUserDataWavelet(waveletId)) {
-          // assume this is the user data wavelet for the right user.
-          udw = waveletData;
-        }
-      }
-
-      ObservableWaveletData convWavelet = root != null ? root : other;
-      SupplementedWave supplement = null;
-      ObservableConversationView conversations = null;
-      if (convWavelet != null) {
-        OpBasedWavelet wavelet = OpBasedWavelet.createReadOnly(convWavelet);
-        if (WaveletBasedConversation.waveletHasConversation(wavelet)) {
-          conversations = conversationUtil.buildConversation(wavelet);
-          supplement = buildSupplement(participant, conversations, udw);
-        }
-      }
-      if (conversations != null) {
-        // This is a conversational wave. Produce a conversational digest.
-        result.addDigest(generateDigest(conversations, supplement, convWavelet));
-      } else {
-        // It is unknown how to present this wave.
-        result.addDigest(generateEmptyorUnknownDigest(wave));
-      }
+      result.addDigest(build(participant, wave));
     }
 
     assert result.getDigests().size() == results.size();
     return result;
+  }
+
+  public Digest build(ParticipantId participant, WaveViewData wave) {
+
+    Digest digest;
+
+    // Note: the indexing infrastructure only supports single-conversation
+    // waves, and requires raw wavelet access for snippeting.
+    ObservableWaveletData root = null;
+    ObservableWaveletData other = null;
+    ObservableWaveletData udw = null;
+    for (ObservableWaveletData waveletData : wave.getWavelets()) {
+      WaveletId waveletId = waveletData.getWaveletId();
+      if (IdUtil.isConversationRootWaveletId(waveletId)) {
+        root = waveletData;
+      } else if (IdUtil.isConversationalId(waveletId)) {
+        other = waveletData;
+      } else if (IdUtil.isUserDataWavelet(waveletId)) {
+        // assume this is the user data wavelet for the right user.
+        udw = waveletData;
+      }
+    }
+
+    ObservableWaveletData convWavelet = root != null ? root : other;
+    SupplementedWave supplement = null;
+    ObservableConversationView conversations = null;
+    if (convWavelet != null) {
+      OpBasedWavelet wavelet = OpBasedWavelet.createReadOnly(convWavelet);
+      if (WaveletBasedConversation.waveletHasConversation(wavelet)) {
+        conversations = conversationUtil.buildConversation(wavelet);
+        supplement = buildSupplement(participant, conversations, udw);
+      }
+    }
+    if (conversations != null) {
+      // This is a conversational wave. Produce a conversational digest.
+      digest = generateDigest(conversations, supplement, convWavelet);
+    } else {
+      // It is unknown how to present this wave.
+      digest = generateEmptyorUnknownDigest(wave);
+    }
+
+    return digest;
   }
 
   /**
