@@ -142,8 +142,8 @@ public class SelectionAnnotationHandler implements AnnotationMutationHandler, Pr
   private static final String PREFIX = "user";
 
   private static final String RANGE_PREFIX = PREFIX + "/r/";
-  private static final String END_PREFIX = PREFIX + "/e/";
-  private static final String DATA_PREFIX = PREFIX + "/d/";
+  public static final String END_PREFIX = PREFIX + "/e/";
+  public static final String DATA_PREFIX = PREFIX + "/d/";
 
   // Do proper random colours at some point...
   private static final RgbColor[] COLOURS = new RgbColor[] {

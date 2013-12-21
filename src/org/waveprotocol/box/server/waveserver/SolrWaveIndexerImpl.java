@@ -208,10 +208,6 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
 
     Preconditions.checkNotNull(wavelet);
 
-    /*
-     * update solr index
-     */
-
     PostMethod postMethod =
         new PostMethod(SolrSearchProviderImpl.SOLR_BASE_URL + "/update/json?commit=true");
     try {
@@ -404,7 +400,7 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
         ReadableWaveletData waveletData;
         try {
           waveletData = waveletDataProvider.getReadableWaveletData(waveletName);
-          System.out.println("commit " + version + " " + waveletData.getVersion());
+          LOG.fine("commit " + version + " " + waveletData.getVersion());
           if (waveletData.getVersion() == version.getVersion()) {
             updateIndex(waveletData);
           }

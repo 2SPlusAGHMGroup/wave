@@ -47,6 +47,7 @@ import org.waveprotocol.box.server.robots.agent.AbstractBaseRobotAgent;
 import org.waveprotocol.box.server.waveserver.SolrSearchProviderImpl;
 import org.waveprotocol.box.server.waveserver.WaveDigester;
 import org.waveprotocol.box.server.waveserver.WaveMap;
+import org.waveprotocol.wave.client.doodad.selection.SelectionAnnotationHandler;
 import org.waveprotocol.wave.model.id.WaveId;
 import org.waveprotocol.wave.model.id.WaveletId;
 import org.waveprotocol.wave.model.wave.ParticipantId;
@@ -72,10 +73,6 @@ import java.util.concurrent.Executors;
 @Singleton
 public class SolrRobot extends AbstractBaseRobotAgent {
 
-  /*
-   * the last three seconds (3000 ms)
-   */
-  private static final int BLINKY_THRESHOLD = 3000;
 
   /*
    * (regression alert) The logging class is different from that being used by
@@ -95,6 +92,15 @@ public class SolrRobot extends AbstractBaseRobotAgent {
   private static final String POST_TAG = "</em>";
   private static final int PRE_TAG_LENGTH = PRE_TAG.length();
   private static final int POST_TAG_LENGTH = POST_TAG.length();
+
+  private static final String HIGHLIGHT_BACKGROUND_COLOR = "rgb(255,255,0)";
+  private static final String ERROR_BACKGROUND_COLOR = "rgb(255,0,0)";
+  private static final String ERROR_COLOR = "rgb(255,255,255)";
+
+  /*
+   * the last three seconds (3000 ms)
+   */
+  private static final int BLINKY_THRESHOLD = 3000;
 
   public static final String ROBOT_URI = AGENT_PREFIX_URI + "/search/solr";
 
@@ -166,7 +172,7 @@ public class SolrRobot extends AbstractBaseRobotAgent {
        * 8.4.3.2.  User
        * http://wave-protocol.googlecode.com/hg/spec/conversation/convspec.html#anchor28
        */
-      if (annotationKey.startsWith("user/d/")) {
+      if (annotationKey.startsWith(SelectionAnnotationHandler.DATA_PREFIX)) {
         /*-
          * The value of the annotation is a comma separated list of
          * (userid, timestamp [,ime composition state])
@@ -175,7 +181,8 @@ public class SolrRobot extends AbstractBaseRobotAgent {
         String[] values = annotation.getValue().split(",");
         long timestamp = Long.parseLong(values[1]);
         if (now - timestamp <= BLINKY_THRESHOLD) {
-          activeBlinkyBits.add(annotationKey.replaceFirst("user/d/", "user/e/"));
+          activeBlinkyBits.add(annotationKey.replaceFirst(SelectionAnnotationHandler.DATA_PREFIX,
+              SelectionAnnotationHandler.END_PREFIX));
         }
       }
     }
@@ -190,68 +197,56 @@ public class SolrRobot extends AbstractBaseRobotAgent {
         Range range = a.getRange();
         int start = range.getStart();
         String query = content.substring(0, start);
-        if (query.endsWith("\n")) {
+
+        /*
+         * XXX (Frank R.) (experimental) takes only the last line as a query
+         * string. To enable query on any line, comment out the last statement
+         * of "break;", and the condition of "start == range.getEnd()"
+         */
+        if (query.endsWith("\n") && start == range.getEnd()) {
+          /*
+           * (regression alert) the commented code does work as expected
+           */
+          // int endOfPreviousLine = blip.getContent().lastIndexOf("\n", start
+          // -
+          // 1);
 
           /*
-           * XXX (Frank R.) (experimental and disabled) takes any line as a
-           * query string
+           * trims the last new line character
            */
-          // search(creator, searchAllowed, query, blip, start);
+          query = query.substring(0, query.length() - 1);
 
-          /*
-           * XXX (Frank R.) (experimental) takes only the last line as a query
-           * string
+          /*-
+           * trims previous lines
            */
-          if (start == range.getEnd()) {
-            search(creator, searchAllowed, query, blip, start);
-            break;
+          int endOfPreviousLine = query.lastIndexOf("\n");
+          if (endOfPreviousLine != -1) {
+            query = query.substring(endOfPreviousLine + 1);
           }
 
+          /*
+           * XXX (Frank R.) (experimental) ignores all (empty) query
+           */
+          if (query.length() > 0) {
+            Blip outputBlip = blip.insertInlineBlip(start - 1);
+            if (searchAllowed) {
+              /*
+               * TODO (Frank R.) async output of search results
+               */
+              // searchAsync(message, creator, outputBlip);
+              search(query, creator, outputBlip);
+            } else {
+              appendError(outputBlip,
+                  "Search is allowed only when the creator of the wave is currently a participant.");
+            }
+          }
+
+          /*
+           * XXX (Frank R.) (experimental) for query at last line only
+           */
+          break;
         }
       }
-    }
-
-    return;
-  }
-
-  private void search(String creator, boolean searchAllowed, String query, Blip blip, int start) {
-
-    if (searchAllowed) {
-      /*
-       * (regression alert) the commented code does work as expected
-       */
-      // int endOfPreviousLine = blip.getContent().lastIndexOf("\n", start
-      // -
-      // 1);
-
-      /*
-       * trims the last new line character
-       */
-      query = query.substring(0, query.length() - 1);
-
-      /*-
-       * trims previous lines
-       */
-      int endOfPreviousLine = query.lastIndexOf("\n");
-      if (endOfPreviousLine != -1) {
-        query = query.substring(endOfPreviousLine + 1);
-      }
-
-      /*
-       * XXX (Frank R.) (experimental) ignores all (empty) query
-       */
-      if (query.length() > 0) {
-        Blip outputBlip = blip.insertInlineBlip(start - 1);
-        /*
-         * TODO (Frank R.) async output of search results
-         */
-        // searchAsync(message, creator, outputBlip);
-        search(query, creator, outputBlip);
-      }
-    } else {
-      Blip outputBlip = blip.insertInlineBlip(start - 1);
-      appendError(outputBlip,
-          "Search is allowed only when the creator of the wave is currently a participant.");
     }
 
     return;
@@ -265,10 +260,10 @@ public class SolrRobot extends AbstractBaseRobotAgent {
     if (message.length() > 0) {
       int startIndex = outputBlip.length();
       BlipContentRefs.all(outputBlip).insertAfter(
-          BundledAnnotation.listOf("style/backgroundColor", "rgb(255,0,0)", "style/color",
-              "rgb(255,255,255)"), message);
+          BundledAnnotation.listOf(Annotation.BACKGROUND_COLOR, ERROR_BACKGROUND_COLOR,
+              Annotation.COLOR, ERROR_COLOR), message);
       int endIndex = outputBlip.length();
-      BlipContentRefs.range(outputBlip, startIndex, endIndex).clearAnnotation("link/wave");
+      BlipContentRefs.range(outputBlip, startIndex, endIndex).clearAnnotation(Annotation.WAVE_LINK);
     }
 
     return;
@@ -490,12 +485,12 @@ public class SolrRobot extends AbstractBaseRobotAgent {
 
   private void appendHighlighted(Blip outputBlip, String text) {
     BlipContentRefs.all(outputBlip).insertAfter(
-        BundledAnnotation.listOf("style/backgroundColor", "rgb(255,255,0)"), text);
+        BundledAnnotation.listOf(Annotation.BACKGROUND_COLOR, HIGHLIGHT_BACKGROUND_COLOR), text);
   }
 
   private void appendWaveLink(Blip outputBlip, String waveId, String text) {
-    BlipContentRefs.all(outputBlip)
-        .insertAfter(BundledAnnotation.listOf("link/wave", waveId), text);
+    BlipContentRefs.all(outputBlip).insertAfter(
+        BundledAnnotation.listOf(Annotation.WAVE_LINK, waveId), text);
   }
 
   private void appendNormal(Blip outputBlip, String text) {
@@ -505,7 +500,7 @@ public class SolrRobot extends AbstractBaseRobotAgent {
       outputBlip.append(text);
       int endIndex = outputBlip.length();
       BlipContentRefs.range(outputBlip, startIndex, endIndex)
-          .clearAnnotation("style/backgroundColor").clearAnnotation("link/wave");
+          .clearAnnotation(Annotation.BACKGROUND_COLOR).clearAnnotation(Annotation.WAVE_LINK);
     }
 
     return;
