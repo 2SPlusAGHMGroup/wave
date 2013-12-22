@@ -47,7 +47,7 @@ import org.waveprotocol.box.server.robots.agent.AbstractBaseRobotAgent;
 import org.waveprotocol.box.server.waveserver.SolrSearchProviderImpl;
 import org.waveprotocol.box.server.waveserver.WaveDigester;
 import org.waveprotocol.box.server.waveserver.WaveMap;
-import org.waveprotocol.wave.client.doodad.selection.SelectionAnnotationHandler;
+import org.waveprotocol.wave.model.conversation.AnnotationConstants;
 import org.waveprotocol.wave.model.id.WaveId;
 import org.waveprotocol.wave.model.id.WaveletId;
 import org.waveprotocol.wave.model.wave.ParticipantId;
@@ -172,7 +172,7 @@ public class SolrRobot extends AbstractBaseRobotAgent {
        * 8.4.3.2.  User
        * http://wave-protocol.googlecode.com/hg/spec/conversation/convspec.html#anchor28
        */
-      if (annotationKey.startsWith(SelectionAnnotationHandler.DATA_PREFIX)) {
+      if (annotationKey.startsWith(AnnotationConstants.USER_DATA)) {
         /*-
          * The value of the annotation is a comma separated list of
          * (userid, timestamp [,ime composition state])
@@ -181,8 +181,8 @@ public class SolrRobot extends AbstractBaseRobotAgent {
         String[] values = annotation.getValue().split(",");
         long timestamp = Long.parseLong(values[1]);
         if (now - timestamp <= BLINKY_THRESHOLD) {
-          activeBlinkyBits.add(annotationKey.replaceFirst(SelectionAnnotationHandler.DATA_PREFIX,
-              SelectionAnnotationHandler.END_PREFIX));
+          activeBlinkyBits.add(annotationKey.replaceFirst(AnnotationConstants.USER_DATA,
+              AnnotationConstants.USER_END));
         }
       }
     }
