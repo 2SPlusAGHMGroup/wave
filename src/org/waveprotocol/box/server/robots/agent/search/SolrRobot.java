@@ -179,7 +179,7 @@ public class SolrRobot extends AbstractBaseRobotAgent {
          * The timestamp is the last time the cursor was updated.
          */
         String[] values = annotation.getValue().split(",");
-        long timestamp = Long.parseLong(values[1]);
+        double timestamp = Double.parseDouble(values[1]);
         if (now - timestamp <= BLINKY_THRESHOLD) {
           activeBlinkyBits.add(annotationKey.replaceFirst(AnnotationConstants.USER_DATA,
               AnnotationConstants.USER_END));
