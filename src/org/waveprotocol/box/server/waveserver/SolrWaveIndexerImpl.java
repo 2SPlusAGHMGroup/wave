@@ -333,8 +333,6 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
         throw new IndexException(waveId);
       }
 
-      LOG.fine(postMethod.getResponseBodyAsString());
-
     } catch (IOException e) {
       throw new IndexException(String.valueOf(wavelet.getWaveletId()), e);
     } finally {
