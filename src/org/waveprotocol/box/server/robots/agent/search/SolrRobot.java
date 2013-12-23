@@ -73,7 +73,6 @@ import java.util.concurrent.Executors;
 @Singleton
 public class SolrRobot extends AbstractBaseRobotAgent {
 
-
   /*
    * (regression alert) The logging class is different from that being used by
    * other built-in robots.
@@ -101,6 +100,14 @@ public class SolrRobot extends AbstractBaseRobotAgent {
    * the last three seconds (3000 ms)
    */
   private static final int BLINKY_THRESHOLD = 3000;
+
+  /*-
+   * XXX (Frank R.) it prevents build failure due to encoding of the unicode
+   * character 0x2014 (&mdash; as html entity)
+   *
+   * TODO find if there is a constant defined in gwt client, and replace this
+   */
+  private static final String MDASH = new String(Character.toChars(0x2014));
 
   public static final String ROBOT_URI = AGENT_PREFIX_URI + "/search/solr";
 
@@ -384,7 +391,7 @@ public class SolrRobot extends AbstractBaseRobotAgent {
             appendNormal(outputBlip, "\n" + count + " ");
 
             /*-
-             * XXX (Frank R.) replace link text with wave title
+             * XXX (Frank R.) mimics how gwt web client concatenates wave title and snippet
              *
              * (regression alert) don't need to index wave title. see
              * org.waveprotocol.box.server.waveserver.WaveDigester.generateSearchResult(ParticipantId, String, Collection<WaveViewData>)
@@ -394,7 +401,7 @@ public class SolrRobot extends AbstractBaseRobotAgent {
                 digester.build(ParticipantId.of(creator), SolrSearchProviderImpl.buildWaveViewData(
                     waveId, Arrays.asList(waveletId), SolrSearchProviderImpl.matchesFunction,
                     waveMap));
-            String linkText = digest.getTitle() + " — " + digest.getSnippet();
+            String linkText = digest.getTitle() + " " + MDASH + " " + digest.getSnippet();
 
             appendWaveLink(outputBlip, id, linkText);
 

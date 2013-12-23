@@ -37,17 +37,32 @@ import org.apache.commons.httpclient.methods.StringRequestEntity;
 import org.apache.http.HttpStatus;
 import org.waveprotocol.box.common.DeltaSequence;
 import org.waveprotocol.box.common.DocumentConstants;
+import org.waveprotocol.box.server.robots.util.ConversationUtil;
+import org.waveprotocol.wave.model.conversation.ObservableConversation;
+import org.waveprotocol.wave.model.conversation.ObservableConversationBlip;
+import org.waveprotocol.wave.model.conversation.ObservableConversationView;
+import org.waveprotocol.wave.model.conversation.TitleHelper;
+import org.waveprotocol.wave.model.conversation.WaveletBasedConversation;
+import org.waveprotocol.wave.model.document.Document;
 import org.waveprotocol.wave.model.document.operation.AnnotationBoundaryMap;
 import org.waveprotocol.wave.model.document.operation.Attributes;
 import org.waveprotocol.wave.model.document.operation.AttributesUpdate;
 import org.waveprotocol.wave.model.document.operation.DocOp;
 import org.waveprotocol.wave.model.document.operation.DocOpCursor;
 import org.waveprotocol.wave.model.document.operation.impl.InitializationCursorAdapter;
+import org.waveprotocol.wave.model.id.IdUtil;
+import org.waveprotocol.wave.model.id.WaveId;
+import org.waveprotocol.wave.model.id.WaveletId;
 import org.waveprotocol.wave.model.id.WaveletName;
 import org.waveprotocol.wave.model.version.HashedVersion;
 import org.waveprotocol.wave.model.wave.ParticipantId;
+import org.waveprotocol.wave.model.wave.data.ObservableWaveletData;
 import org.waveprotocol.wave.model.wave.data.ReadableBlipData;
 import org.waveprotocol.wave.model.wave.data.ReadableWaveletData;
+import org.waveprotocol.wave.model.wave.data.impl.WaveViewDataImpl;
+import org.waveprotocol.wave.model.wave.opbased.OpBasedWavelet;
+import org.waveprotocol.wave.model.waveref.WaveRef;
+import org.waveprotocol.wave.util.escapers.jvm.JavaWaverefEncoder;
 import org.waveprotocol.wave.util.logging.Log;
 
 import java.io.IOException;
@@ -68,12 +83,12 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
   // TODO (Yuri Z.): Inject executor.
   private static final Executor executor = Executors.newSingleThreadExecutor();
 
-  private final ReadableWaveletDataProvider waveletDataProvider;
-
   /*
    * (regression alert) for getting the title of a wave
    */
   // private final ConversationUtil conversationUtil;
+
+  private final ReadableWaveletDataProvider waveletDataProvider;
 
   /*-
    * copied with modifications from
@@ -143,11 +158,21 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
 
   @Inject
   public SolrWaveIndexerImpl(WaveMap waveMap, WaveletProvider waveletProvider,
-      ReadableWaveletDataProvider waveletDataProvider,
+      ReadableWaveletDataProvider waveletDataProvider, ConversationUtil conversationUtil,
       WaveletNotificationDispatcher notificationDispatcher) {
+
     super(waveMap, waveletProvider);
+
     this.waveletDataProvider = waveletDataProvider;
+
+    /*
+     * (regression alert) for getting the title of a wave
+     */
+    // this.conversationUtil = conversationUtil;
+
     notificationDispatcher.subscribe(this);
+
+    return;
   }
 
   @Override
@@ -208,6 +233,10 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
 
     Preconditions.checkNotNull(wavelet);
 
+    if (!IdUtil.isConversationRootWaveletId(wavelet.getWaveletId())) {
+      return;
+    }
+
     PostMethod postMethod =
         new PostMethod(SolrSearchProviderImpl.SOLR_BASE_URL + "/update/json?commit=true");
     try {
@@ -219,12 +248,13 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
       String creator = wavelet.getCreator().getAddress();
 
       /*
-       * (regression alert) don't index wave title for link text in solr-bot
-       * search results. instead, reuse WaveDigester
+       * (regression alert) gets wave title - too much overhead for updating
+       * index. on rendering search results, solr-bot builds link texts with
+       * WaveDigester
        */
       // String title =
-      // TitleHelper.extractTitle(document.getContent().getMutableDocument());
-      // String title = getTitle(wavelet.getWaveId(), wavelet.getWaveletId());
+      // getTitle(wavelet.getWaveId(), wavelet.getWaveletId(), waveMap,
+      // conversationUtil);
 
       for (String docName : wavelet.getDocumentIds()) {
         ReadableBlipData document = wavelet.getDocument(docName);
@@ -232,7 +262,7 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
         /*
          * skips non-blip documents
          */
-        if ("conversation".equals(docName) || "m/read".equals(docName)) {
+        if (!IdUtil.isBlipId(docName)) {
           continue;
         }
 
@@ -271,8 +301,15 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
           participantsJson.add(new JsonPrimitive(participantAddress));
         }
 
+        /*
+         * id will be something like waveId + "/~/conv+root/" + docName
+         */
+        String id =
+            JavaWaverefEncoder.encodeToUriPathSegment(WaveRef.of(wavelet.getWaveId(),
+                wavelet.getWaveletId(), docName));
+
         JsonObject docJson = new JsonObject();
-        docJson.addProperty(SolrSearchProviderImpl.ID, waveId + "/~/conv+root/" + docName);
+        docJson.addProperty(SolrSearchProviderImpl.ID, id);
         docJson.addProperty(SolrSearchProviderImpl.WAVE_ID, waveId);
         docJson.addProperty(SolrSearchProviderImpl.WAVELET_ID, waveletId);
         docJson.addProperty(SolrSearchProviderImpl.DOC_NAME, docName);
@@ -296,7 +333,7 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
         throw new IndexException(waveId);
       }
 
-      // LOG.fine(postMethod.getResponseBodyAsString());
+      LOG.fine(postMethod.getResponseBodyAsString());
 
     } catch (IOException e) {
       throw new IndexException(String.valueOf(wavelet.getWaveletId()), e);
@@ -308,73 +345,71 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
   }
 
   /*
-   * (regression alert) gets wave title - too overhead for updating index
+   * TODO (Frank R.) move to TitleHelper. Currently, WaveletContainer is of
+   * default visibility, which prevents the refactoring.
    */
-  // private String getTitle(WaveId waveId, WaveletId waveletId) {
-  //
-  // String title = null;
-  //
-  // WaveViewDataImpl wave = WaveViewDataImpl.create(waveId);
-  //
-  // WaveletContainer waveletContainer = null;
-  // WaveletName waveletname = WaveletName.of(waveId, waveletId);
-  //
-  // /*-
-  // * copied from
-  // *
-  // org.waveprotocol.box.server.waveserver.SimpleSearchProviderImpl.filterWavesViewBySearchCriteria(Function<ReadableWaveletData,
-  // Boolean>, Multimap<WaveId, WaveletId>)
-  // */
-  // // TODO (alown): Find some way to use isLocalWavelet to do this properly!
-  // try {
-  // if (LOG.isFineLoggable()) {
-  // LOG.fine("Trying as a remote wavelet");
-  // }
-  // waveletContainer = waveMap.getRemoteWavelet(waveletname);
-  // } catch (WaveletStateException e) {
-  // LOG.severe(String.format("Failed to get remote wavelet %s",
-  // waveletname.toString()), e);
-  // } catch (NullPointerException e) {
-  // // This is a fairly normal case of it being a local-only wave.
-  // // Yet this only seems to appear in the test suite.
-  // // Continuing is completely harmless here.
-  // LOG.info(String.format("%s is definitely not a remote wavelet. (Null key)",
-  // waveletname.toString()), e);
-  // }
-  //
-  // if (waveletContainer == null) {
-  // try {
-  // if (LOG.isFineLoggable()) {
-  // LOG.fine("Trying as a local wavelet");
-  // }
-  // waveletContainer = waveMap.getLocalWavelet(waveletname);
-  // } catch (WaveletStateException e) {
-  // LOG.severe(String.format("Failed to get local wavelet %s",
-  // waveletname.toString()), e);
-  // }
-  // }
-  //
-  // try {
-  // wave.addWavelet(waveletContainer.copyWaveletData());
-  // for (ObservableWaveletData waveletData : wave.getWavelets()) {
-  // OpBasedWavelet wavelet = OpBasedWavelet.createReadOnly(waveletData);
-  // if (WaveletBasedConversation.waveletHasConversation(wavelet)) {
-  // ObservableConversationView conversations =
-  // conversationUtil.buildConversation(wavelet);
-  // ObservableConversation root = conversations.getRoot();
-  // ObservableConversationBlip firstBlip = root.getRootThread().getFirstBlip();
-  // Document firstBlipContents = firstBlip.getContent();
-  // title = TitleHelper.extractTitle(firstBlipContents).trim();
-  // break;
-  // }
-  // }
-  // } catch (WaveletStateException e) {
-  // LOG.warning("Failed to access wavelet " +
-  // waveletContainer.getWaveletName(), e);
-  // }
-  //
-  // return title;
-  // }
+  public static String getTitle(WaveId waveId, WaveletId waveletId, WaveMap waveMap,
+      ConversationUtil conversationUtil) {
+
+    String title = null;
+
+    WaveViewDataImpl wave = WaveViewDataImpl.create(waveId);
+
+    WaveletContainer waveletContainer = null;
+    WaveletName waveletname = WaveletName.of(waveId, waveletId);
+
+    /*-
+     * copied from
+     *
+    org.waveprotocol.box.server.waveserver.SimpleSearchProviderImpl.filterWavesViewBySearchCriteria(Function<ReadableWaveletData,
+    Boolean>, Multimap<WaveId, WaveletId>)
+     */
+    // TODO (alown): Find some way to use isLocalWavelet to do this properly!
+    try {
+      if (LOG.isFineLoggable()) {
+        LOG.fine("Trying as a remote wavelet");
+      }
+      waveletContainer = waveMap.getRemoteWavelet(waveletname);
+    } catch (WaveletStateException e) {
+      LOG.severe(String.format("Failed to get remote wavelet %s", waveletname.toString()), e);
+    } catch (NullPointerException e) {
+      // This is a fairly normal case of it being a local-only wave.
+      // Yet this only seems to appear in the test suite.
+      // Continuing is completely harmless here.
+      LOG.info(String.format("%s is definitely not a remote wavelet. (Null key)",
+          waveletname.toString()), e);
+    }
+
+    if (waveletContainer == null) {
+      try {
+        if (LOG.isFineLoggable()) {
+          LOG.fine("Trying as a local wavelet");
+        }
+        waveletContainer = waveMap.getLocalWavelet(waveletname);
+      } catch (WaveletStateException e) {
+        LOG.severe(String.format("Failed to get local wavelet %s", waveletname.toString()), e);
+      }
+    }
+
+    try {
+      wave.addWavelet(waveletContainer.copyWaveletData());
+      for (ObservableWaveletData waveletData : wave.getWavelets()) {
+        OpBasedWavelet wavelet = OpBasedWavelet.createReadOnly(waveletData);
+        if (WaveletBasedConversation.waveletHasConversation(wavelet)) {
+          ObservableConversationView conversations = conversationUtil.buildConversation(wavelet);
+          ObservableConversation root = conversations.getRoot();
+          ObservableConversationBlip firstBlip = root.getRootThread().getFirstBlip();
+          Document firstBlipContents = firstBlip.getContent();
+          title = TitleHelper.extractTitle(firstBlipContents).trim();
+          break;
+        }
+      }
+    } catch (WaveletStateException e) {
+      LOG.warning("Failed to access wavelet " + waveletContainer.getWaveletName(), e);
+    }
+
+    return title;
+  }
 
   @Override
   public void waveletUpdate(final ReadableWaveletData wavelet, DeltaSequence deltas) {
