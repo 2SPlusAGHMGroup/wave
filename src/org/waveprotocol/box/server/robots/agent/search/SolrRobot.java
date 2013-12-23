@@ -66,7 +66,7 @@ import java.util.concurrent.Executors;
 
 /**
  * Robot that offers full text search
- * 
+ *
  * @author Frank R. <renfeng.cn@gmail.com>
  */
 @SuppressWarnings("serial")

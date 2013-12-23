@@ -58,7 +58,7 @@ import java.util.List;
 
 /**
  * Generates digests for the search service.
- * 
+ *
  * @author yurize@apache.org
  */
 public class WaveDigester {
@@ -136,7 +136,7 @@ public class WaveDigester {
 
   /**
    * Produces a digest for a set of conversations. Never returns null.
-   * 
+   *
    * @param conversations the conversation.
    * @param supplement the supplement that allows to easily perform various
    *        queries on user related state of the wavelet.
@@ -220,7 +220,7 @@ public class WaveDigester {
   /**
    * Generates an empty digest in case the wave is empty, or an unknown digest
    * otherwise.
-   * 
+   *
    * @param wave the wave.
    * @return the generated digest.
    */
@@ -232,7 +232,7 @@ public class WaveDigester {
 
   /**
    * Builds the supplement model from a wave. Never returns null.
-   * 
+   *
    * @param viewer the participant for which the supplement is constructed.
    * @param conversations conversations in the wave
    * @param udw the user data wavelet for the logged user.

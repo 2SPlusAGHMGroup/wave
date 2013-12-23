@@ -50,7 +50,7 @@ import java.util.Set;
 
 /**
  * Search provider that reads user specific info from user data wavelet.
- * 
+ *
  * @author yurize@apache.org (Yuri Zelikov)
  */
 public class SimpleSearchProviderImpl implements SearchProvider {
@@ -245,7 +245,7 @@ public class SimpleSearchProviderImpl implements SearchProvider {
 
   /**
    * Verifies whether the wavelet matches the filter criteria.
-   * 
+   *
    * @param wavelet the wavelet.
    * @param user the logged in user.
    * @param sharedDomainParticipantId the shared domain participant id.

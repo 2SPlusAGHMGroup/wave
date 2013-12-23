@@ -98,7 +98,7 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
    */
   /**
    * Concatenates all of the text of the specified docops into a single String.
-   * 
+   *
    * @param documentops the document operations to concatenate.
    * @return A String containing the characters from the operations.
    */

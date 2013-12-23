@@ -54,7 +54,7 @@ import java.util.regex.Pattern;
 
 /**
  * Search provider that offers full text search
- * 
+ *
  * @author Frank R. <renfeng.cn@gmail.com>
  */
 public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements SearchProvider {
@@ -205,9 +205,7 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
             /*-
              * XXX (Frank R.) (experimental and disabled) reduce round trips to solr
              *
-             * solr search result may contain waves ignored
-             * by the result list due to the flaw in
-             * org.waveprotocol.box.server.waveserver.SolrWaveIndexerImpl.updateIndex(ReadableWaveletData)
+             * the result list will be filtered. so we need all results
              */
             // if (currentUserWavesView.size() >= numResults) {
             // break;
@@ -217,9 +215,7 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
           /*-
            * XXX (Frank R.) (experimental and disabled) reduce round trips to solr
            *
-           * solr search result may contain waves ignored
-           * by the result list due to the flaw in
-           * org.waveprotocol.box.server.waveserver.SolrWaveIndexerImpl.updateIndex(ReadableWaveletData)
+           * the result list will be filtered. so we need all results
            */
           // if (currentUserWavesView.size() >= numResults) {
           // break;
@@ -262,9 +258,6 @@ public class SolrSearchProviderImpl extends SimpleSearchProviderImpl implements 
     return !IN_PATTERN.matcher(query).find();
   }
 
-  /*
-   * (regression alert) can't make it static due to sharedDomainParticipantId
-   */
   public static String buildFilterQuery(String query, final boolean isAllQuery,
       String addressOfRequiredParticipant, ParticipantId sharedDomainParticipantId) {
 

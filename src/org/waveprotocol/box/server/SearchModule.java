@@ -75,7 +75,8 @@ public class SearchModule extends AbstractModule {
     } else if ("solr".equals(searchType)) {
       bind(SearchProvider.class).to(SolrSearchProviderImpl.class).in(Singleton.class);
       /*-
-       * required by org.waveprotocol.box.server.ServerMain.initializeSearch(Injector, WaveBus)
+       * (Frank R.) binds to class with dummy methods just because it's required by
+       * org.waveprotocol.box.server.ServerMain.initializeSearch(Injector, WaveBus)
        */
       bind(PerUserWaveViewBus.Listener.class).to(SolrWaveIndexerImpl.class).in(Singleton.class);
       bind(WaveIndexer.class).to(SolrWaveIndexerImpl.class).in(Singleton.class);
