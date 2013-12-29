@@ -36,7 +36,7 @@ import org.apache.commons.httpclient.methods.RequestEntity;
 import org.apache.commons.httpclient.methods.StringRequestEntity;
 import org.apache.http.HttpStatus;
 import org.waveprotocol.box.common.DeltaSequence;
-import org.waveprotocol.box.common.DocumentConstants;
+import org.waveprotocol.box.common.Snippets;
 import org.waveprotocol.box.server.robots.util.ConversationUtil;
 import org.waveprotocol.wave.model.conversation.ObservableConversation;
 import org.waveprotocol.wave.model.conversation.ObservableConversationBlip;
@@ -44,12 +44,7 @@ import org.waveprotocol.wave.model.conversation.ObservableConversationView;
 import org.waveprotocol.wave.model.conversation.TitleHelper;
 import org.waveprotocol.wave.model.conversation.WaveletBasedConversation;
 import org.waveprotocol.wave.model.document.Document;
-import org.waveprotocol.wave.model.document.operation.AnnotationBoundaryMap;
-import org.waveprotocol.wave.model.document.operation.Attributes;
-import org.waveprotocol.wave.model.document.operation.AttributesUpdate;
 import org.waveprotocol.wave.model.document.operation.DocOp;
-import org.waveprotocol.wave.model.document.operation.DocOpCursor;
-import org.waveprotocol.wave.model.document.operation.impl.InitializationCursorAdapter;
 import org.waveprotocol.wave.model.id.IdUtil;
 import org.waveprotocol.wave.model.id.WaveId;
 import org.waveprotocol.wave.model.id.WaveletId;
@@ -66,6 +61,7 @@ import org.waveprotocol.wave.util.escapers.jvm.JavaWaverefEncoder;
 import org.waveprotocol.wave.util.logging.Log;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -89,72 +85,6 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
   // private final ConversationUtil conversationUtil;
 
   private final ReadableWaveletDataProvider waveletDataProvider;
-
-  /*-
-   * copied with modifications from
-   * org.waveprotocol.box.common.Snippets.collateTextForOps(Iterable<DocOp>)
-   *
-   * replaced white space character with new line
-   */
-  /**
-   * Concatenates all of the text of the specified docops into a single String.
-   *
-   * @param documentops the document operations to concatenate.
-   * @return A String containing the characters from the operations.
-   */
-  public static String readText(ReadableBlipData doc) {
-
-    final StringBuilder resultBuilder = new StringBuilder();
-
-    DocOp docOp = doc.getContent().asOperation();
-    docOp.apply(InitializationCursorAdapter.adapt(new DocOpCursor() {
-      @Override
-      public void characters(String s) {
-        resultBuilder.append(s);
-      }
-
-      @Override
-      public void annotationBoundary(AnnotationBoundaryMap map) {
-      }
-
-      @Override
-      public void elementStart(String type, Attributes attrs) {
-        if (type.equals(DocumentConstants.LINE)) {
-          resultBuilder.append("\n");
-        }
-      }
-
-      @Override
-      public void elementEnd() {
-      }
-
-      @Override
-      public void retain(int itemCount) {
-      }
-
-      @Override
-      public void deleteCharacters(String chars) {
-      }
-
-      @Override
-      public void deleteElementStart(String type, Attributes attrs) {
-      }
-
-      @Override
-      public void deleteElementEnd() {
-      }
-
-      @Override
-      public void replaceAttributes(Attributes oldAttrs, Attributes newAttrs) {
-      }
-
-      @Override
-      public void updateAttributes(AttributesUpdate attrUpdate) {
-      }
-    }));
-
-    return resultBuilder.toString();
-  }
 
   @Inject
   public SolrWaveIndexerImpl(WaveMap waveMap, WaveletProvider waveletProvider,
@@ -266,9 +196,6 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
           continue;
         }
 
-        String text = readText(document);
-
-
         /*
          * (regression alert) it hangs at
          * com.google.common.collect.Iterables.cycle(T...)
@@ -279,21 +206,10 @@ public class SolrWaveIndexerImpl extends AbstractWaveIndexer implements WaveBus.
         // document.getContent().asOperation()));
 
         /*
-         * (regression alert) cannot reuse Snippets because it trims the
-         * content.
+         * Snippets trims the content.
          */
-        // Iterable<DocOp> docs = Arrays.asList((DocOp)
-        // document.getContent().asOperation());
-        // String text = Snippets.collateTextForOps(docs);
-
-        /*-
-         * XXX (Frank R.) (experimental) skips invisible blips
-         * a newly created blip starts with (and contains only)
-         * a new line character, and is not treated as invisible
-         */
-        if (text.length() == 0) {
-          continue;
-        }
+        Iterable<DocOp> docs = Arrays.asList((DocOp) document.getContent().asOperation());
+        String text = Snippets.collateTextForOps(docs);
 
         JsonArray participantsJson = new JsonArray();
         for (ParticipantId participant : wavelet.getParticipants()) {

@@ -206,6 +206,11 @@ public class SolrRobot extends AbstractBaseRobotAgent {
         String query = content.substring(0, start);
 
         /*
+         * TODO continue thread when the blip is a single line; inline reply
+         * otherwise
+         */
+
+        /*
          * XXX (Frank R.) (experimental) takes only the last line as a query
          * string. To enable query on any line, comment out the last statement
          * of "break;", and the condition of "start == range.getEnd()"
@@ -240,7 +245,7 @@ public class SolrRobot extends AbstractBaseRobotAgent {
               /*
                * TODO (Frank R.) async output of search results
                */
-              // searchAsync(message, creator, outputBlip);
+              // searchAsync(query, creator, outputBlip);
               search(query, creator, outputBlip);
             } else {
               appendError(outputBlip,
